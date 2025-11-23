@@ -3,10 +3,8 @@ Parser for AsciiDoc documents.
 
 This module provides functions to parse AsciiDoc text into an Abstract Syntax Tree.
 """
-module Parser
 
-using ..AST
-
+# Exported functions
 export parse_asciidoc, parse_inline
 
 """
@@ -108,7 +106,7 @@ function try_parse_header(state::ParserState)
     if m !== nothing
         level = length(m.captures[1])
         text = m.captures[2]
-        id = m.captures[3] !== nothing ? m.captures[3] : ""
+        id = m.captures[3] !== nothing ? String(m.captures[3]) : ""
         next_line!(state)
         return Header(level, parse_inline(text), id)
     end
@@ -149,7 +147,7 @@ function try_parse_code_block(state::ParserState)
     # Check for source block with language
     m = match(r"^\[source,\s*(\w+)\]$", line)
     if m !== nothing
-        language = m.captures[1]
+        language = String(m.captures[1])
         next_line!(state)
 
         # Next line should be ----
@@ -423,11 +421,11 @@ function try_parse_paragraph(state::ParserState)
 end
 
 """
-    parse_inline(text::String) -> Vector{InlineNode}
+    parse_inline(text::AbstractString) -> Vector{InlineNode}
 
 Parse inline formatting within text.
 """
-function parse_inline(text::String)
+function parse_inline(text::AbstractString)
     nodes = InlineNode[]
     i = 1
     current_text = ""
@@ -517,7 +515,7 @@ function parse_inline(text::String)
             # Find end of URL (space or bracket)
             url_match = match(r"^(https?://[^\s\[\]]+)(?:\[([^\]]+)\])?", text[i:end])
             if url_match !== nothing
-                url = url_match.captures[1]
+                url = String(url_match.captures[1])
                 link_text = url_match.captures[2]
                 if link_text !== nothing
                     push!(nodes, Link(url, parse_inline(link_text)))
@@ -537,8 +535,8 @@ function parse_inline(text::String)
 
             img_match = match(r"^image:([^\[]+)(?:\[([^\]]*)\])?", text[i:end])
             if img_match !== nothing
-                url = img_match.captures[1]
-                alt = img_match.captures[2] !== nothing ? img_match.captures[2] : ""
+                url = String(img_match.captures[1])
+                alt = img_match.captures[2] !== nothing ? String(img_match.captures[2]) : ""
                 push!(nodes, Image(url, alt))
                 i += length(img_match.match)
                 continue
@@ -552,7 +550,7 @@ function parse_inline(text::String)
 
             xref_match = match(r"^<<([^,>]+)(?:,([^>]+))?>>", text[i:end])
             if xref_match !== nothing
-                target = xref_match.captures[1]
+                target = String(xref_match.captures[1])
                 xref_text = xref_match.captures[2]
                 if xref_text !== nothing
                     push!(nodes, CrossRef(target, parse_inline(xref_text)))
@@ -575,5 +573,3 @@ function parse_inline(text::String)
 
     return nodes
 end
-
-end # module

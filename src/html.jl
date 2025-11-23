@@ -3,10 +3,8 @@ HTML backend for AsciiDoc.
 
 Converts AsciiDoc AST to HTML output.
 """
-module HTML
 
-using ..AST
-
+# Exported functions for HTML backend
 export to_html
 
 """
@@ -373,5 +371,3 @@ function escape_html(text::String)
 
     return result
 end
-
-end # module
