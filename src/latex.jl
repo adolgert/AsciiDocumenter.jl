@@ -3,10 +3,8 @@ LaTeX backend for AsciiDoc.
 
 Converts AsciiDoc AST to LaTeX output.
 """
-module LaTeX
 
-using ..AST
-
+# Exported functions for LaTeX backend
 export to_latex
 
 """
@@ -368,5 +366,3 @@ function escape_latex(text::String)
 
     return result
 end
-
-end # module

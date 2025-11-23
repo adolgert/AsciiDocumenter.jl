@@ -11,6 +11,8 @@ module SpecTests
 
 using Test
 using AsciiDoc
+# Explicitly import AsciiDoc's parse to avoid ambiguity with Base.parse
+import AsciiDoc: parse, convert, LaTeX, HTML, Document
 
 # Test DSL for spec compliance
 """
@@ -410,13 +412,13 @@ end
 
 @testset "LaTeX Backend Compliance" begin
 
-    @test "Section commands" begin
+    @testset "Section commands" begin
         doc = parse("= Title\n== Section")
         latex = convert(LaTeX, doc)
         @test contains(latex, "\\section")
     end
 
-    @test "Text formatting" begin
+    @testset "Text formatting" begin
         doc = parse("*bold* _italic_ `code`")
         latex = convert(LaTeX, doc)
         @test contains(latex, "\\textbf")
@@ -424,7 +426,7 @@ end
         @test contains(latex, "\\texttt")
     end
 
-    @test "LaTeX special character escaping" begin
+    @testset "LaTeX special character escaping" begin
         doc = parse("Test \$ & % # _ { } characters")
         latex = convert(LaTeX, doc)
         @test contains(latex, "\\\$")
@@ -435,14 +437,14 @@ end
 
 @testset "HTML Backend Compliance" begin
 
-    @test "Semantic HTML5" begin
+    @testset "Semantic HTML5" begin
         doc = parse("= Title\n\nParagraph")
         html = convert(HTML, doc)
         @test contains(html, "<h1>")
         @test contains(html, "<p>")
     end
 
-    @test "Standalone mode" begin
+    @testset "Standalone mode" begin
         doc = parse("= Title")
         html = convert(HTML, doc, standalone=true)
         @test contains(html, "<!DOCTYPE html>")
@@ -450,7 +452,7 @@ end
         @test contains(html, "</html>")
     end
 
-    @test "Code block language classes" begin
+    @testset "Code block language classes" begin
         doc = parse("[source,julia]\n----\ncode\n----")
         html = convert(HTML, doc)
         @test contains(html, "language-julia")

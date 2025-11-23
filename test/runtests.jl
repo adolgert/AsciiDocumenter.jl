@@ -1,5 +1,7 @@
 using Test
 using AsciiDoc
+# Explicitly import AsciiDoc's parse to avoid ambiguity with Base.parse
+import AsciiDoc: parse, convert, LaTeX, HTML
 
 # Run specification compliance tests
 include("spec_tests.jl")

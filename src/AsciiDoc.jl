@@ -51,23 +51,25 @@ html = convert(HTML, doc)
 """
 module AsciiDoc
 
-# Include submodules
+# Include all source files (flat structure)
 include("ast.jl")
 include("parser.jl")
 include("latex.jl")
 include("html.jl")
 
-# Re-export main types and functions
-using .AST
-using .Parser
-using .LaTeX
-using .HTML
-
+# Main module exports
 export Document, Header, Paragraph, CodeBlock, BlockQuote,
        UnorderedList, OrderedList, DefinitionList,
        Table, HorizontalRule,
        Text, Bold, Italic, Monospace, Link, Image, CrossRef,
-       parse, convert
+       parse, convert, LaTeX, HTML
+
+# Backend types for convert API
+struct LaTeXBackend end
+struct HTMLBackend end
+
+const LaTeX = LaTeXBackend
+const HTML = HTMLBackend
 
 # Main API
 
@@ -86,7 +88,7 @@ This is a paragraph.
 \"\"\")
 ```
 """
-Base.parse(::Type{Document}, text::String) = Parser.parse_asciidoc(text)
+Base.parse(::Type{Document}, text::String) = parse_asciidoc(text)
 parse(text::String) = Base.parse(Document, text)
 
 """
@@ -101,7 +103,7 @@ doc = parse("= Title\\n\\nParagraph")
 latex = convert(LaTeX, doc)
 ```
 """
-Base.convert(::Type{LaTeX}, doc::Document) = LaTeX.to_latex(doc)
+Base.convert(::Type{LaTeX}, doc::Document) = to_latex(doc)
 
 """
     convert(::Type{HTML}, doc::Document; standalone=false) -> String
@@ -119,7 +121,7 @@ html_standalone = convert(HTML, doc, standalone=true)
 ```
 """
 Base.convert(::Type{HTML}, doc::Document; standalone::Bool=false) =
-    HTML.to_html(doc, standalone=standalone)
+    to_html(doc, standalone=standalone)
 
 # Convenience functions
 

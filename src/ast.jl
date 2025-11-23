@@ -3,8 +3,8 @@ Abstract Syntax Tree (AST) node types for AsciiDoc documents.
 
 This module defines the type hierarchy for representing parsed AsciiDoc content.
 """
-module AST
 
+# Exported types
 export AsciiDocNode, Document, Header, Paragraph, List, ListItem,
        CodeBlock, BlockQuote, Table, TableRow, TableCell,
        InlineNode, Text, Bold, Italic, Monospace, Subscript, Superscript,
@@ -298,5 +298,3 @@ CrossRef(target::String) = CrossRef(target, InlineNode[])
 An explicit line break.
 """
 struct LineBreak <: InlineNode end
-
-end # module
