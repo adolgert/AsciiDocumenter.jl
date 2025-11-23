@@ -1,0 +1,15 @@
+name = "AsciiDoc"
+uuid = "8d64b9e2-4e3f-4a7d-9c8f-1e2d3f4a5b6c"
+authors = ["Your Name <your.email@example.com>"]
+version = "0.1.0"
+
+[deps]
+
+[compat]
+julia = "1.10"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]
