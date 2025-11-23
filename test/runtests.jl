@@ -1,7 +1,10 @@
 using Test
 using AsciiDoc
 
-@testset "AsciiDoc.jl" begin
+# Run specification compliance tests
+include("spec_tests.jl")
+
+@testset "AsciiDoc.jl - Legacy Tests" begin
     @testset "Headers" begin
         doc = parse("= Level 1 Header")
         @test length(doc.blocks) == 1
