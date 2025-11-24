@@ -1,22 +1,24 @@
 """
 HTML backend for AsciiDoc.
 
-Converts AsciiDoc AST to HTML output.
+Converts AsciiDoc AST to HTML output using IO streaming for memory efficiency.
 """
 
 # Exported functions for HTML backend
 export to_html
 
-"""
-    to_html(doc::Document; standalone=false) -> String
+# ============================================================================
+# Core IO-based rendering methods
+# ============================================================================
 
-Convert an AsciiDoc document to HTML.
+"""
+    to_html(io::IO, doc::Document; standalone=false) -> Nothing
+
+Convert an AsciiDoc document to HTML, writing to the provided IO stream.
 
 If `standalone=true`, wraps the output in a complete HTML document.
 """
-function to_html(doc::Document; standalone::Bool=false)
-    io = IOBuffer()
-
+function to_html(io::IO, doc::Document; standalone::Bool=false)
     if standalone
         write(io, """<!DOCTYPE html>
 <html>
@@ -39,7 +41,7 @@ th { background-color: #f5f5f5; }
 
     # Convert blocks
     for block in doc.blocks
-        write(io, to_html(block))
+        to_html(io, block)
         write(io, "\n")
     end
 
@@ -47,308 +49,403 @@ th { background-color: #f5f5f5; }
         write(io, "</body>\n</html>")
     end
 
-    return String(take!(io))
+    return nothing
 end
 
 """
-    to_html(node::Header) -> String
+    to_html(io::IO, node::Header) -> Nothing
 
-Convert a header to HTML heading tag.
+Convert a header to HTML heading tag, writing to IO.
 """
-function to_html(node::Header)
+function to_html(io::IO, node::Header)
     # Map AsciiDoc levels to HTML (h1-h6)
     level = clamp(node.level, 1, 6)
-    text = join([to_html(n) for n in node.text], "")
 
-    id_attr = !isempty(node.id) ? " id=\"$(escape_html(node.id))\"" : ""
-
-    return "<h$level$id_attr>$text</h$level>"
-end
-
-"""
-    to_html(node::Paragraph) -> String
-
-Convert a paragraph to HTML.
-"""
-function to_html(node::Paragraph)
-    content = join([to_html(n) for n in node.content], "")
-    return "<p>$content</p>"
-end
-
-"""
-    to_html(node::CodeBlock) -> String
-
-Convert a code block to HTML.
-"""
-function to_html(node::CodeBlock)
-    escaped_content = escape_html(node.content)
-
-    if isempty(node.language)
-        return "<pre><code>$escaped_content</code></pre>"
-    else
-        # Add language class for syntax highlighting libraries
-        return "<pre><code class=\"language-$(node.language)\">$escaped_content</code></pre>"
+    print(io, "<h", level)
+    if !isempty(node.id)
+        print(io, " id=\"", escape_html(node.id), "\"")
     end
+    print(io, ">")
+
+    for child in node.text
+        to_html(io, child)
+    end
+
+    print(io, "</h", level, ">")
+    return nothing
 end
 
 """
-    to_html(node::BlockQuote) -> String
+    to_html(io::IO, node::Paragraph) -> Nothing
 
-Convert a block quote to HTML.
+Convert a paragraph to HTML, writing to IO.
 """
-function to_html(node::BlockQuote)
-    io = IOBuffer()
-    write(io, "<blockquote>\n")
+function to_html(io::IO, node::Paragraph)
+    print(io, "<p>")
+    for child in node.content
+        to_html(io, child)
+    end
+    print(io, "</p>")
+    return nothing
+end
+
+"""
+    to_html(io::IO, node::CodeBlock) -> Nothing
+
+Convert a code block to HTML, writing to IO.
+"""
+function to_html(io::IO, node::CodeBlock)
+    print(io, "<pre><code")
+
+    if !isempty(node.language)
+        print(io, " class=\"language-", node.language, "\"")
+    end
+
+    print(io, ">")
+    write(io, escape_html(node.content))
+    print(io, "</code></pre>")
+    return nothing
+end
+
+"""
+    to_html(io::IO, node::BlockQuote) -> Nothing
+
+Convert a block quote to HTML, writing to IO.
+"""
+function to_html(io::IO, node::BlockQuote)
+    print(io, "<blockquote>\n")
 
     for block in node.blocks
-        write(io, to_html(block))
+        to_html(io, block)
         write(io, "\n")
     end
 
     if !isempty(node.attribution)
-        write(io, "<footer>— $(escape_html(node.attribution))</footer>\n")
+        print(io, "<footer>— ", escape_html(node.attribution), "</footer>\n")
     end
 
-    write(io, "</blockquote>")
-
-    return String(take!(io))
+    print(io, "</blockquote>")
+    return nothing
 end
 
 """
-    to_html(node::UnorderedList) -> String
+    to_html(io::IO, node::UnorderedList) -> Nothing
 
-Convert an unordered list to HTML.
+Convert an unordered list to HTML, writing to IO.
 """
-function to_html(node::UnorderedList)
-    io = IOBuffer()
-    write(io, "<ul>\n")
+function to_html(io::IO, node::UnorderedList)
+    print(io, "<ul>\n")
 
     for item in node.items
-        write(io, "<li>")
-        write(io, join([to_html(n) for n in item.content], ""))
+        print(io, "<li>")
+        for child in item.content
+            to_html(io, child)
+        end
 
         if item.nested !== nothing
             write(io, "\n")
-            write(io, to_html(item.nested))
+            to_html(io, item.nested)
         end
 
-        write(io, "</li>\n")
+        print(io, "</li>\n")
     end
 
-    write(io, "</ul>")
-
-    return String(take!(io))
+    print(io, "</ul>")
+    return nothing
 end
 
 """
-    to_html(node::OrderedList) -> String
+    to_html(io::IO, node::OrderedList) -> Nothing
 
-Convert an ordered list to HTML.
+Convert an ordered list to HTML, writing to IO.
 """
-function to_html(node::OrderedList)
-    io = IOBuffer()
+function to_html(io::IO, node::OrderedList)
+    print(io, "<ol")
 
     # Map list style to HTML type attribute
-    type_attr = if node.style == "loweralpha"
-        " type=\"a\""
+    if node.style == "loweralpha"
+        print(io, " type=\"a\"")
     elseif node.style == "upperalpha"
-        " type=\"A\""
+        print(io, " type=\"A\"")
     elseif node.style == "lowerroman"
-        " type=\"i\""
+        print(io, " type=\"i\"")
     elseif node.style == "upperroman"
-        " type=\"I\""
-    else
-        ""
+        print(io, " type=\"I\"")
     end
 
-    write(io, "<ol$type_attr>\n")
+    print(io, ">\n")
 
     for item in node.items
-        write(io, "<li>")
-        write(io, join([to_html(n) for n in item.content], ""))
+        print(io, "<li>")
+        for child in item.content
+            to_html(io, child)
+        end
 
         if item.nested !== nothing
             write(io, "\n")
-            write(io, to_html(item.nested))
+            to_html(io, item.nested)
         end
 
-        write(io, "</li>\n")
+        print(io, "</li>\n")
     end
 
-    write(io, "</ol>")
-
-    return String(take!(io))
+    print(io, "</ol>")
+    return nothing
 end
 
 """
-    to_html(node::DefinitionList) -> String
+    to_html(io::IO, node::DefinitionList) -> Nothing
 
-Convert a definition list to HTML.
+Convert a definition list to HTML, writing to IO.
 """
-function to_html(node::DefinitionList)
-    io = IOBuffer()
-    write(io, "<dl>\n")
+function to_html(io::IO, node::DefinitionList)
+    print(io, "<dl>\n")
 
     for (term, desc) in node.items
-        term_text = join([to_html(n) for n in term.content], "")
-        desc_text = join([to_html(n) for n in desc.content], "")
+        print(io, "<dt>")
+        for child in term.content
+            to_html(io, child)
+        end
+        print(io, "</dt>\n")
 
-        write(io, "<dt>$(term_text)</dt>\n")
-        write(io, "<dd>$(desc_text)</dd>\n")
+        print(io, "<dd>")
+        for child in desc.content
+            to_html(io, child)
+        end
+        print(io, "</dd>\n")
     end
 
-    write(io, "</dl>")
-
-    return String(take!(io))
+    print(io, "</dl>")
+    return nothing
 end
 
 """
-    to_html(node::Table) -> String
+    to_html(io::IO, node::Table) -> Nothing
 
-Convert a table to HTML.
+Convert a table to HTML, writing to IO.
 """
-function to_html(node::Table)
+function to_html(io::IO, node::Table)
     if isempty(node.rows)
-        return ""
+        return nothing
     end
 
-    io = IOBuffer()
-    write(io, "<table>\n")
+    print(io, "<table>\n")
 
     for (idx, row) in enumerate(node.rows)
-        write(io, "<tr>\n")
+        print(io, "<tr>\n")
 
         tag = (row.is_header || idx == 1) ? "th" : "td"
 
         for cell in row.cells
-            cell_content = join([to_html(n) for n in cell.content], "")
-            write(io, "<$tag>$(cell_content)</$tag>\n")
+            print(io, "<", tag, ">")
+            for child in cell.content
+                to_html(io, child)
+            end
+            print(io, "</", tag, ">\n")
         end
 
-        write(io, "</tr>\n")
+        print(io, "</tr>\n")
     end
 
-    write(io, "</table>")
+    print(io, "</table>")
+    return nothing
+end
 
+"""
+    to_html(io::IO, node::HorizontalRule) -> Nothing
+
+Convert a horizontal rule to HTML, writing to IO.
+"""
+function to_html(io::IO, node::HorizontalRule)
+    print(io, "<hr>")
+    return nothing
+end
+
+# ============================================================================
+# Inline nodes
+# ============================================================================
+
+"""
+    to_html(io::IO, node::Text) -> Nothing
+
+Convert text node to HTML (with escaping), writing to IO.
+"""
+function to_html(io::IO, node::Text)
+    write(io, escape_html(node.content))
+    return nothing
+end
+
+"""
+    to_html(io::IO, node::Bold) -> Nothing
+
+Convert bold text to HTML, writing to IO.
+"""
+function to_html(io::IO, node::Bold)
+    print(io, "<strong>")
+    for child in node.content
+        to_html(io, child)
+    end
+    print(io, "</strong>")
+    return nothing
+end
+
+"""
+    to_html(io::IO, node::Italic) -> Nothing
+
+Convert italic text to HTML, writing to IO.
+"""
+function to_html(io::IO, node::Italic)
+    print(io, "<em>")
+    for child in node.content
+        to_html(io, child)
+    end
+    print(io, "</em>")
+    return nothing
+end
+
+"""
+    to_html(io::IO, node::Monospace) -> Nothing
+
+Convert monospace text to HTML, writing to IO.
+"""
+function to_html(io::IO, node::Monospace)
+    print(io, "<code>")
+    for child in node.content
+        to_html(io, child)
+    end
+    print(io, "</code>")
+    return nothing
+end
+
+"""
+    to_html(io::IO, node::Subscript) -> Nothing
+
+Convert subscript to HTML, writing to IO.
+"""
+function to_html(io::IO, node::Subscript)
+    print(io, "<sub>")
+    for child in node.content
+        to_html(io, child)
+    end
+    print(io, "</sub>")
+    return nothing
+end
+
+"""
+    to_html(io::IO, node::Superscript) -> Nothing
+
+Convert superscript to HTML, writing to IO.
+"""
+function to_html(io::IO, node::Superscript)
+    print(io, "<sup>")
+    for child in node.content
+        to_html(io, child)
+    end
+    print(io, "</sup>")
+    return nothing
+end
+
+"""
+    to_html(io::IO, node::Link) -> Nothing
+
+Convert a link to HTML, writing to IO.
+"""
+function to_html(io::IO, node::Link)
+    print(io, "<a href=\"", escape_html(node.url), "\">")
+
+    if isempty(node.text)
+        write(io, escape_html(node.url))
+    else
+        for child in node.text
+            to_html(io, child)
+        end
+    end
+
+    print(io, "</a>")
+    return nothing
+end
+
+"""
+    to_html(io::IO, node::Image) -> Nothing
+
+Convert an image to HTML, writing to IO.
+"""
+function to_html(io::IO, node::Image)
+    print(io, "<img src=\"", escape_html(node.url), "\"")
+
+    if !isempty(node.alt_text)
+        print(io, " alt=\"", escape_html(node.alt_text), "\"")
+    end
+
+    print(io, ">")
+    return nothing
+end
+
+"""
+    to_html(io::IO, node::CrossRef) -> Nothing
+
+Convert a cross-reference to HTML, writing to IO.
+"""
+function to_html(io::IO, node::CrossRef)
+    print(io, "<a href=\"#", escape_html(node.target), "\">")
+
+    if isempty(node.text)
+        write(io, escape_html(node.target))
+    else
+        for child in node.text
+            to_html(io, child)
+        end
+    end
+
+    print(io, "</a>")
+    return nothing
+end
+
+"""
+    to_html(io::IO, node::LineBreak) -> Nothing
+
+Convert a line break to HTML, writing to IO.
+"""
+function to_html(io::IO, node::LineBreak)
+    print(io, "<br>")
+    return nothing
+end
+
+# ============================================================================
+# Convenience wrappers (backward compatibility)
+# ============================================================================
+
+"""
+    to_html(doc::Document; standalone=false) -> String
+
+Convert an AsciiDoc document to HTML string.
+
+This is a convenience wrapper that creates an IOBuffer internally.
+For streaming output, use `to_html(io::IO, doc::Document)` instead.
+"""
+function to_html(doc::Document; standalone::Bool=false)
+    io = IOBuffer()
+    to_html(io, doc; standalone=standalone)
     return String(take!(io))
 end
 
 """
-    to_html(node::HorizontalRule) -> String
+    to_html(node::Union{BlockNode,InlineNode}) -> String
 
-Convert a horizontal rule to HTML.
+Convert any AST node to HTML string.
+
+This is a convenience wrapper that creates an IOBuffer internally.
+For streaming output, use `to_html(io::IO, node)` instead.
 """
-function to_html(node::HorizontalRule)
-    return "<hr>"
+function to_html(node::Union{BlockNode,InlineNode})
+    io = IOBuffer()
+    to_html(io, node)
+    return String(take!(io))
 end
 
-# Inline nodes
-
-"""
-    to_html(node::Text) -> String
-
-Convert text node to HTML (with escaping).
-"""
-function to_html(node::Text)
-    return escape_html(node.content)
-end
-
-"""
-    to_html(node::Bold) -> String
-
-Convert bold text to HTML.
-"""
-function to_html(node::Bold)
-    content = join([to_html(n) for n in node.content], "")
-    return "<strong>$content</strong>"
-end
-
-"""
-    to_html(node::Italic) -> String
-
-Convert italic text to HTML.
-"""
-function to_html(node::Italic)
-    content = join([to_html(n) for n in node.content], "")
-    return "<em>$content</em>"
-end
-
-"""
-    to_html(node::Monospace) -> String
-
-Convert monospace text to HTML.
-"""
-function to_html(node::Monospace)
-    content = join([to_html(n) for n in node.content], "")
-    return "<code>$content</code>"
-end
-
-"""
-    to_html(node::Subscript) -> String
-
-Convert subscript to HTML.
-"""
-function to_html(node::Subscript)
-    content = join([to_html(n) for n in node.content], "")
-    return "<sub>$content</sub>"
-end
-
-"""
-    to_html(node::Superscript) -> String
-
-Convert superscript to HTML.
-"""
-function to_html(node::Superscript)
-    content = join([to_html(n) for n in node.content], "")
-    return "<sup>$content</sup>"
-end
-
-"""
-    to_html(node::Link) -> String
-
-Convert a link to HTML.
-"""
-function to_html(node::Link)
-    if isempty(node.text)
-        return "<a href=\"$(escape_html(node.url))\">$(escape_html(node.url))</a>"
-    else
-        text = join([to_html(n) for n in node.text], "")
-        return "<a href=\"$(escape_html(node.url))\">$text</a>"
-    end
-end
-
-"""
-    to_html(node::Image) -> String
-
-Convert an image to HTML.
-"""
-function to_html(node::Image)
-    alt_attr = !isempty(node.alt_text) ? " alt=\"$(escape_html(node.alt_text))\"" : ""
-    return "<img src=\"$(escape_html(node.url))\"$alt_attr>"
-end
-
-"""
-    to_html(node::CrossRef) -> String
-
-Convert a cross-reference to HTML.
-"""
-function to_html(node::CrossRef)
-    if isempty(node.text)
-        return "<a href=\"#$(escape_html(node.target))\">$(escape_html(node.target))</a>"
-    else
-        text = join([to_html(n) for n in node.text], "")
-        return "<a href=\"#$(escape_html(node.target))\">$text</a>"
-    end
-end
-
-"""
-    to_html(node::LineBreak) -> String
-
-Convert a line break to HTML.
-"""
-function to_html(node::LineBreak)
-    return "<br>"
-end
+# ============================================================================
+# Utility functions
+# ============================================================================
 
 """
     escape_html(text::String) -> String

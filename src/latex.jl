@@ -1,38 +1,40 @@
 """
 LaTeX backend for AsciiDoc.
 
-Converts AsciiDoc AST to LaTeX output.
+Converts AsciiDoc AST to LaTeX output using IO streaming for memory efficiency.
 """
 
 # Exported functions for LaTeX backend
 export to_latex
 
-"""
-    to_latex(doc::Document) -> String
+# ============================================================================
+# Core IO-based rendering methods
+# ============================================================================
 
-Convert an AsciiDoc document to LaTeX.
 """
-function to_latex(doc::Document)
-    io = IOBuffer()
+    to_latex(io::IO, doc::Document) -> Nothing
 
+Convert an AsciiDoc document to LaTeX, writing to the provided IO stream.
+"""
+function to_latex(io::IO, doc::Document)
     # Write preamble if needed
     # (User can wrap this in their own document class)
 
     # Convert blocks
     for block in doc.blocks
-        write(io, to_latex(block))
+        to_latex(io, block)
         write(io, "\n\n")
     end
 
-    return String(take!(io))
+    return nothing
 end
 
 """
-    to_latex(node::Header) -> String
+    to_latex(io::IO, node::Header) -> Nothing
 
-Convert a header to LaTeX section command.
+Convert a header to LaTeX section command, writing to IO.
 """
-function to_latex(node::Header)
+function to_latex(io::IO, node::Header)
     # Map AsciiDoc levels to LaTeX commands
     commands = ["\\chapter", "\\section", "\\subsection",
                 "\\subsubsection", "\\paragraph", "\\subparagraph"]
@@ -40,302 +42,396 @@ function to_latex(node::Header)
     # Level 0 (= Title) is typically the document title
     if node.level == 0 || node.level == 1
         cmd = "\\section"
-        level_offset = 1
     else
-        level_offset = 1
         cmd = commands[min(node.level, length(commands))]
     end
 
-    text = join([to_latex(n) for n in node.text], "")
-
-    result = "$cmd{$text}"
+    print(io, cmd, "{")
+    for child in node.text
+        to_latex(io, child)
+    end
+    print(io, "}")
 
     # Add label if there's an ID
     if !isempty(node.id)
-        result *= "\n\\label{$(escape_latex(node.id))}"
+        print(io, "\n\\label{", escape_latex(node.id), "}")
     end
 
-    return result
+    return nothing
 end
 
 """
-    to_latex(node::Paragraph) -> String
+    to_latex(io::IO, node::Paragraph) -> Nothing
 
-Convert a paragraph to LaTeX.
+Convert a paragraph to LaTeX, writing to IO.
 """
-function to_latex(node::Paragraph)
-    return join([to_latex(n) for n in node.content], "")
+function to_latex(io::IO, node::Paragraph)
+    for child in node.content
+        to_latex(io, child)
+    end
+    return nothing
 end
 
 """
-    to_latex(node::CodeBlock) -> String
+    to_latex(io::IO, node::CodeBlock) -> Nothing
 
-Convert a code block to LaTeX using listings or verbatim.
+Convert a code block to LaTeX using listings or verbatim, writing to IO.
 """
-function to_latex(node::CodeBlock)
+function to_latex(io::IO, node::CodeBlock)
     if isempty(node.language)
         # Use verbatim environment
-        return "\\begin{verbatim}\n$(node.content)\n\\end{verbatim}"
+        print(io, "\\begin{verbatim}\n")
+        write(io, node.content)
+        print(io, "\n\\end{verbatim}")
     else
         # Use listings environment with language
         # Note: requires \usepackage{listings}
-        return "\\begin{lstlisting}[language=$(node.language)]\n$(node.content)\n\\end{lstlisting}"
+        print(io, "\\begin{lstlisting}[language=", node.language, "]\n")
+        write(io, node.content)
+        print(io, "\n\\end{lstlisting}")
     end
+    return nothing
 end
 
 """
-    to_latex(node::BlockQuote) -> String
+    to_latex(io::IO, node::BlockQuote) -> Nothing
 
-Convert a block quote to LaTeX quotation environment.
+Convert a block quote to LaTeX quotation environment, writing to IO.
 """
-function to_latex(node::BlockQuote)
-    io = IOBuffer()
-    write(io, "\\begin{quotation}\n")
+function to_latex(io::IO, node::BlockQuote)
+    print(io, "\\begin{quotation}\n")
 
     for block in node.blocks
-        write(io, to_latex(block))
+        to_latex(io, block)
         write(io, "\n")
     end
 
     if !isempty(node.attribution)
-        write(io, "\\hfill --- $(escape_latex(node.attribution))\n")
+        print(io, "\\hfill --- ", escape_latex(node.attribution), "\n")
     end
 
-    write(io, "\\end{quotation}")
-
-    return String(take!(io))
+    print(io, "\\end{quotation}")
+    return nothing
 end
 
 """
-    to_latex(node::UnorderedList) -> String
+    to_latex(io::IO, node::UnorderedList) -> Nothing
 
-Convert an unordered list to LaTeX itemize environment.
+Convert an unordered list to LaTeX itemize environment, writing to IO.
 """
-function to_latex(node::UnorderedList)
-    io = IOBuffer()
-    write(io, "\\begin{itemize}\n")
+function to_latex(io::IO, node::UnorderedList)
+    print(io, "\\begin{itemize}\n")
 
     for item in node.items
-        write(io, "\\item ")
-        write(io, join([to_latex(n) for n in item.content], ""))
+        print(io, "\\item ")
+        for child in item.content
+            to_latex(io, child)
+        end
 
         if item.nested !== nothing
             write(io, "\n")
-            write(io, to_latex(item.nested))
+            to_latex(io, item.nested)
         end
 
         write(io, "\n")
     end
 
-    write(io, "\\end{itemize}")
-
-    return String(take!(io))
+    print(io, "\\end{itemize}")
+    return nothing
 end
 
 """
-    to_latex(node::OrderedList) -> String
+    to_latex(io::IO, node::OrderedList) -> Nothing
 
-Convert an ordered list to LaTeX enumerate environment.
+Convert an ordered list to LaTeX enumerate environment, writing to IO.
 """
-function to_latex(node::OrderedList)
-    io = IOBuffer()
-    write(io, "\\begin{enumerate}\n")
+function to_latex(io::IO, node::OrderedList)
+    print(io, "\\begin{enumerate}\n")
 
     for item in node.items
-        write(io, "\\item ")
-        write(io, join([to_latex(n) for n in item.content], ""))
+        print(io, "\\item ")
+        for child in item.content
+            to_latex(io, child)
+        end
 
         if item.nested !== nothing
             write(io, "\n")
-            write(io, to_latex(item.nested))
+            to_latex(io, item.nested)
         end
 
         write(io, "\n")
     end
 
-    write(io, "\\end{enumerate}")
-
-    return String(take!(io))
+    print(io, "\\end{enumerate}")
+    return nothing
 end
 
 """
-    to_latex(node::DefinitionList) -> String
+    to_latex(io::IO, node::DefinitionList) -> Nothing
 
-Convert a definition list to LaTeX description environment.
+Convert a definition list to LaTeX description environment, writing to IO.
 """
-function to_latex(node::DefinitionList)
-    io = IOBuffer()
-    write(io, "\\begin{description}\n")
+function to_latex(io::IO, node::DefinitionList)
+    print(io, "\\begin{description}\n")
 
     for (term, desc) in node.items
-        term_text = join([to_latex(n) for n in term.content], "")
-        desc_text = join([to_latex(n) for n in desc.content], "")
-        write(io, "\\item[$(term_text)] $(desc_text)\n")
+        print(io, "\\item[")
+        for child in term.content
+            to_latex(io, child)
+        end
+        print(io, "] ")
+        for child in desc.content
+            to_latex(io, child)
+        end
+        write(io, "\n")
     end
 
-    write(io, "\\end{description}")
-
-    return String(take!(io))
+    print(io, "\\end{description}")
+    return nothing
 end
 
 """
-    to_latex(node::Table) -> String
+    to_latex(io::IO, node::Table) -> Nothing
 
-Convert a table to LaTeX tabular environment.
+Convert a table to LaTeX tabular environment, writing to IO.
 """
-function to_latex(node::Table)
+function to_latex(io::IO, node::Table)
     if isempty(node.rows)
-        return ""
+        return nothing
     end
-
-    io = IOBuffer()
 
     # Determine column count from first row
     ncols = length(node.rows[1].cells)
     col_spec = join(fill("l", ncols), " ")
 
-    write(io, "\\begin{tabular}{$col_spec}\n")
+    print(io, "\\begin{tabular}{", col_spec, "}\n")
 
     for (idx, row) in enumerate(node.rows)
-        cell_contents = [join([to_latex(n) for n in cell.content], "")
-                        for cell in row.cells]
-
         if row.is_header || (idx == 1 && !any(r -> r.is_header, node.rows))
             # First row or explicit header
-            write(io, "\\textbf{", join(cell_contents, "} & \\textbf{"), "} \\\\\n")
-            write(io, "\\hline\n")
+            print(io, "\\textbf{")
+            for (cell_idx, cell) in enumerate(row.cells)
+                for child in cell.content
+                    to_latex(io, child)
+                end
+                if cell_idx < length(row.cells)
+                    print(io, "} & \\textbf{")
+                end
+            end
+            print(io, "} \\\\\n")
+            print(io, "\\hline\n")
         else
-            write(io, join(cell_contents, " & "), " \\\\\n")
+            for (cell_idx, cell) in enumerate(row.cells)
+                for child in cell.content
+                    to_latex(io, child)
+                end
+                if cell_idx < length(row.cells)
+                    print(io, " & ")
+                end
+            end
+            print(io, " \\\\\n")
         end
     end
 
-    write(io, "\\end{tabular}")
+    print(io, "\\end{tabular}")
+    return nothing
+end
 
+"""
+    to_latex(io::IO, node::HorizontalRule) -> Nothing
+
+Convert a horizontal rule to LaTeX, writing to IO.
+"""
+function to_latex(io::IO, node::HorizontalRule)
+    print(io, "\\noindent\\rule{\\textwidth}{0.4pt}")
+    return nothing
+end
+
+# ============================================================================
+# Inline nodes
+# ============================================================================
+
+"""
+    to_latex(io::IO, node::Text) -> Nothing
+
+Convert text node to LaTeX (with escaping), writing to IO.
+"""
+function to_latex(io::IO, node::Text)
+    write(io, escape_latex(node.content))
+    return nothing
+end
+
+"""
+    to_latex(io::IO, node::Bold) -> Nothing
+
+Convert bold text to LaTeX, writing to IO.
+"""
+function to_latex(io::IO, node::Bold)
+    print(io, "\\textbf{")
+    for child in node.content
+        to_latex(io, child)
+    end
+    print(io, "}")
+    return nothing
+end
+
+"""
+    to_latex(io::IO, node::Italic) -> Nothing
+
+Convert italic text to LaTeX, writing to IO.
+"""
+function to_latex(io::IO, node::Italic)
+    print(io, "\\textit{")
+    for child in node.content
+        to_latex(io, child)
+    end
+    print(io, "}")
+    return nothing
+end
+
+"""
+    to_latex(io::IO, node::Monospace) -> Nothing
+
+Convert monospace text to LaTeX, writing to IO.
+"""
+function to_latex(io::IO, node::Monospace)
+    print(io, "\\texttt{")
+    for child in node.content
+        to_latex(io, child)
+    end
+    print(io, "}")
+    return nothing
+end
+
+"""
+    to_latex(io::IO, node::Subscript) -> Nothing
+
+Convert subscript to LaTeX, writing to IO.
+"""
+function to_latex(io::IO, node::Subscript)
+    print(io, "\\textsubscript{")
+    for child in node.content
+        to_latex(io, child)
+    end
+    print(io, "}")
+    return nothing
+end
+
+"""
+    to_latex(io::IO, node::Superscript) -> Nothing
+
+Convert superscript to LaTeX, writing to IO.
+"""
+function to_latex(io::IO, node::Superscript)
+    print(io, "\\textsuperscript{")
+    for child in node.content
+        to_latex(io, child)
+    end
+    print(io, "}")
+    return nothing
+end
+
+"""
+    to_latex(io::IO, node::Link) -> Nothing
+
+Convert a link to LaTeX (using hyperref), writing to IO.
+"""
+function to_latex(io::IO, node::Link)
+    if isempty(node.text)
+        print(io, "\\url{", escape_latex(node.url), "}")
+    else
+        print(io, "\\href{", escape_latex(node.url), "}{")
+        for child in node.text
+            to_latex(io, child)
+        end
+        print(io, "}")
+    end
+    return nothing
+end
+
+"""
+    to_latex(io::IO, node::Image) -> Nothing
+
+Convert an image to LaTeX, writing to IO.
+"""
+function to_latex(io::IO, node::Image)
+    # Basic image inclusion
+    # Note: requires \usepackage{graphicx}
+    print(io, "\\begin{figure}[h]\n")
+    print(io, "\\centering\n")
+    print(io, "\\includegraphics{", escape_latex(node.url), "}")
+
+    if !isempty(node.alt_text)
+        print(io, "\n\\caption{", escape_latex(node.alt_text), "}")
+    end
+
+    print(io, "\n\\end{figure}")
+    return nothing
+end
+
+"""
+    to_latex(io::IO, node::CrossRef) -> Nothing
+
+Convert a cross-reference to LaTeX, writing to IO.
+"""
+function to_latex(io::IO, node::CrossRef)
+    if isempty(node.text)
+        print(io, "\\ref{", escape_latex(node.target), "}")
+    else
+        print(io, "\\hyperref[", escape_latex(node.target), "]{")
+        for child in node.text
+            to_latex(io, child)
+        end
+        print(io, "}")
+    end
+    return nothing
+end
+
+"""
+    to_latex(io::IO, node::LineBreak) -> Nothing
+
+Convert a line break to LaTeX, writing to IO.
+"""
+function to_latex(io::IO, node::LineBreak)
+    print(io, "\\\\")
+    return nothing
+end
+
+# ============================================================================
+# Convenience wrappers (backward compatibility)
+# ============================================================================
+
+"""
+    to_latex(doc::Document) -> String
+
+Convert an AsciiDoc document to LaTeX string.
+
+This is a convenience wrapper that creates an IOBuffer internally.
+For streaming output, use `to_latex(io::IO, doc::Document)` instead.
+"""
+function to_latex(doc::Document)
+    io = IOBuffer()
+    to_latex(io, doc)
     return String(take!(io))
 end
 
 """
-    to_latex(node::HorizontalRule) -> String
+    to_latex(node::Union{BlockNode,InlineNode}) -> String
 
-Convert a horizontal rule to LaTeX.
+Convert any AST node to LaTeX string.
+
+This is a convenience wrapper that creates an IOBuffer internally.
+For streaming output, use `to_latex(io::IO, node)` instead.
 """
-function to_latex(node::HorizontalRule)
-    return "\\noindent\\rule{\\textwidth}{0.4pt}"
+function to_latex(node::Union{BlockNode,InlineNode})
+    io = IOBuffer()
+    to_latex(io, node)
+    return String(take!(io))
 end
 
-# Inline nodes
-
-"""
-    to_latex(node::Text) -> String
-
-Convert text node to LaTeX (with escaping).
-"""
-function to_latex(node::Text)
-    return escape_latex(node.content)
-end
-
-"""
-    to_latex(node::Bold) -> String
-
-Convert bold text to LaTeX.
-"""
-function to_latex(node::Bold)
-    content = join([to_latex(n) for n in node.content], "")
-    return "\\textbf{$content}"
-end
-
-"""
-    to_latex(node::Italic) -> String
-
-Convert italic text to LaTeX.
-"""
-function to_latex(node::Italic)
-    content = join([to_latex(n) for n in node.content], "")
-    return "\\textit{$content}"
-end
-
-"""
-    to_latex(node::Monospace) -> String
-
-Convert monospace text to LaTeX.
-"""
-function to_latex(node::Monospace)
-    content = join([to_latex(n) for n in node.content], "")
-    return "\\texttt{$content}"
-end
-
-"""
-    to_latex(node::Subscript) -> String
-
-Convert subscript to LaTeX.
-"""
-function to_latex(node::Subscript)
-    content = join([to_latex(n) for n in node.content], "")
-    return "\\textsubscript{$content}"
-end
-
-"""
-    to_latex(node::Superscript) -> String
-
-Convert superscript to LaTeX.
-"""
-function to_latex(node::Superscript)
-    content = join([to_latex(n) for n in node.content], "")
-    return "\\textsuperscript{$content}"
-end
-
-"""
-    to_latex(node::Link) -> String
-
-Convert a link to LaTeX (using hyperref).
-"""
-function to_latex(node::Link)
-    if isempty(node.text)
-        return "\\url{$(escape_latex(node.url))}"
-    else
-        text = join([to_latex(n) for n in node.text], "")
-        return "\\href{$(escape_latex(node.url))}{$text}"
-    end
-end
-
-"""
-    to_latex(node::Image) -> String
-
-Convert an image to LaTeX.
-"""
-function to_latex(node::Image)
-    # Basic image inclusion
-    # Note: requires \usepackage{graphicx}
-    caption = !isempty(node.alt_text) ? "\n\\caption{$(escape_latex(node.alt_text))}" : ""
-
-    return """\\begin{figure}[h]
-\\centering
-\\includegraphics{$(escape_latex(node.url))}$caption
-\\end{figure}"""
-end
-
-"""
-    to_latex(node::CrossRef) -> String
-
-Convert a cross-reference to LaTeX.
-"""
-function to_latex(node::CrossRef)
-    if isempty(node.text)
-        return "\\ref{$(escape_latex(node.target))}"
-    else
-        text = join([to_latex(n) for n in node.text], "")
-        return "\\hyperref[$(escape_latex(node.target))]{$text}"
-    end
-end
-
-"""
-    to_latex(node::LineBreak) -> String
-
-Convert a line break to LaTeX.
-"""
-function to_latex(node::LineBreak)
-    return "\\\\"
-end
+# ============================================================================
+# Utility functions
+# ============================================================================
 
 """
     escape_latex(text::String) -> String
