@@ -9,6 +9,9 @@ include("spec_tests.jl")
 # Run IO streaming tests (PR2)
 include("io_streaming_tests.jl")
 
+# Run MarkdownAST integration tests (PR3)
+include("markdownast_tests.jl")
+
 @testset "AsciiDoc.jl - Legacy Tests" begin
     @testset "Headers" begin
         doc = parse("= Level 1 Header")
