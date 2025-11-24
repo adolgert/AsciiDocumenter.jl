@@ -7,6 +7,137 @@ This module provides functions to parse AsciiDoc text into an Abstract Syntax Tr
 # Exported functions
 export parse_asciidoc, parse_inline
 
+# --- Inline Parsing Regexes and Helpers ---
+
+# IMPORTANT: Order matters in the Regex alternation (from left to right for precedence).
+# More specific/longer patterns should generally come first.
+# Also, non-greedy quantifiers (`*?`, `+?`) are crucial for correct matching.
+const INLINE_TOKEN_PATTERN = Regex(
+    raw"""
+    # Cross-reference: <<target,text>> or <<target>>
+    (?<xref><<([^,>]+?)(?:,([^>]+?))?>>) | 
+
+    # Image: image:url[alt]
+    (?<image>image:([^\[]+?)(?:\b\[([^\]]*?)\])?) | 
+
+    # Link: https?://url[text] or https?://url
+    (?<link>https?://[^\s\[\]]+?(?:\b\[([^\]]+?)\])?) | 
+
+    # Monospace: `text` (can be empty)
+    (?<monospace>`([^`]*?)`) | 
+
+    # Bold: *text* (must not start/end with space, not empty)
+    (?<bold>\*(?!\s)([^*\s](?:[^\*]*?[^*\s])?)\*) | 
+
+    # Italic: _text_ (must not start/end with space, not empty)
+    (?<italic>_(?!\s)([^_\s](?:[^_]*?[^_\s])?)_) | 
+
+    # Subscript: ~text~ (must not start/end with space, not empty)
+    (?<subscript>~(?!\s)([^~\s](?:[^~]*?[^~\s])?)~) | 
+
+    # Superscript: ^text^ (must not start/end with space, not empty)
+    (?<superscript>\^(?!\s)([^\\^\s](?:[^\\^]*?[^\\^\s])?)\^)
+    """,
+    "x" # Extended mode for comments and whitespace, for readability
+)
+
+"""
+    _parse_inline_match(m::RegexMatch) -> InlineNode
+
+Helper function to convert a RegexMatch for an inline token into an InlineNode.
+Recursively calls `parse_inline` for nested content.
+"""
+function _parse_inline_match(m::RegexMatch)
+    # Check named capture groups using m[Symbol("name")]
+    # Then, extract content based on the matched group.
+
+    if m[:xref] !== nothing
+        # Re-match the full xref string to extract its parts reliably
+        # The main INLINE_TOKEN_PATTERN captures the whole <<...>> as 'xref'
+        # We need to extract target and optional text from m[Symbol("xref")]
+        sub_m = match(r"^<<([^,>]+?)(?:,([^>]+?))?>>$", m[:xref])
+        if sub_m !== nothing
+            target = String(sub_m.captures[1])
+            text_cap = sub_m.captures[2]
+            if text_cap !== nothing
+                return CrossRef(target, parse_inline(String(text_cap)))
+            else
+                return CrossRef(target)
+            end
+        end
+    elseif m[:image] !== nothing
+        sub_m = match(r"^image:([^\[]+?)(?:\b\[([^\]]*?)\])?$", m[:image])
+        if sub_m !== nothing
+            url = String(sub_m.captures[1])
+            alt = sub_m.captures[2]
+            return Image(url, alt !== nothing ? String(alt) : "")
+        end
+    elseif m[:link] !== nothing
+        sub_m = match(r"^(https?://[^\s\[\]]+?)(?:\b\[([^\]]+?)\])?$", m[:link])
+        if sub_m !== nothing
+            url = String(sub_m.captures[1])
+            text_cap = sub_m.captures[2]
+            if text_cap !== nothing
+                return Link(url, parse_inline(String(text_cap)))
+            else
+                return Link(url)
+            end
+        end
+    elseif m[:monospace] !== nothing
+        # For simple delimited tokens, just strip the delimiters
+        content = strip(m[:monospace], '`')
+        return Monospace([Text(String(content))]) # Text constructor takes String
+    elseif m[:bold] !== nothing
+        content = strip(m[:bold], '*')
+        return Bold(parse_inline(String(content)))
+    elseif m[:italic] !== nothing
+        content = strip(m[:italic], '_')
+        return Italic(parse_inline(String(content)))
+    elseif m[:subscript] !== nothing
+        content = strip(m[:subscript], '~')
+        return Subscript(parse_inline(String(content)))
+    elseif m[:superscript] !== nothing
+        content = strip(m[:superscript], '^')
+        return Superscript(parse_inline(String(content)))
+    end
+    # This should ideally not be reached if INLINE_TOKEN_PATTERN is exhaustive
+    @warn "Failed to parse inline match: $(m.match). Returning as plain text."
+    return Text(String(m.match)) # Fallback, should convert to String
+end
+
+"""
+    parse_inline(text::AbstractString) -> Vector{InlineNode}
+
+Parse inline formatting within text using a Regex-based approach.
+"""
+function parse_inline(text::AbstractString)
+    nodes = InlineNode[]
+    last_idx = 1 # Tracks the end of the last processed segment
+
+    # Iterate over all matches of the combined inline token pattern
+    for m in eachmatch(INLINE_TOKEN_PATTERN, text)
+        # Add plain text before the current match
+        if m.offset > last_idx
+            push!(nodes, Text(String(text[last_idx:m.offset-1])))
+        end
+
+        # Parse the matched inline token and add it to nodes
+        push!(nodes, _parse_inline_match(m))
+
+        # Update last_idx to the end of the current match
+        last_idx = m.offset + length(m.match)
+    end
+
+    # Add any remaining plain text after the last match
+    if last_idx <= length(text)
+        push!(nodes, Text(String(text[last_idx:end])))
+    end
+
+    return nodes
+end
+
+# --- Original ParserState and Block Parsing functions (unchanged) ---
+
 """
     ParserState
 
@@ -259,12 +390,12 @@ function parse_unordered_list(state::ParserState)
     items = ListItem[]
 
     while (line = peek_line(state)) !== nothing
-        m = match(r"^\s*[\*\-]\s+(.+)$", line)
+        m = match(r"^\s*[\*\-]\s+(.*)$", line)
         if m === nothing
             break
         end
 
-        content = m.captures[1]
+        content = String(m.captures[1])
         next_line!(state)
 
         push!(items, ListItem(parse_inline(content)))
@@ -282,12 +413,12 @@ function parse_ordered_list(state::ParserState)
     items = ListItem[]
 
     while (line = peek_line(state)) !== nothing
-        m = match(r"^\s*(?:\.+|\d+\.)\s+(.+)$", line)
+        m = match(r"^\s*(?:\.+|\d+\.)\s+(.*)$", line)
         if m === nothing
             break
         end
 
-        content = m.captures[1]
+        content = String(m.captures[1])
         next_line!(state)
 
         push!(items, ListItem(parse_inline(content)))
@@ -360,7 +491,7 @@ function try_parse_table(state::ParserState)
                 for cell in cells
                     cell_content = strip(cell)
                     if !isempty(cell_content)
-                        push!(current_row_cells, TableCell(parse_inline(cell_content)))
+                        push!(current_row_cells, TableCell(parse_inline(String(cell_content))))
                     end
                 end
 
@@ -418,158 +549,4 @@ function try_parse_paragraph(state::ParserState)
     end
 
     return nothing
-end
-
-"""
-    parse_inline(text::AbstractString) -> Vector{InlineNode}
-
-Parse inline formatting within text.
-"""
-function parse_inline(text::AbstractString)
-    nodes = InlineNode[]
-    i = 1
-    current_text = ""
-
-    while i <= length(text)
-        char = text[i]
-
-        # Check for inline formatting
-        if char == '*' && i < length(text) && text[i+1] != ' '
-            # Bold
-            if !isempty(current_text)
-                push!(nodes, Text(current_text))
-                current_text = ""
-            end
-
-            # Find closing *
-            close_idx = findnext('*', text, i+1)
-            if close_idx !== nothing
-                content = text[i+1:close_idx-1]
-                push!(nodes, Bold(parse_inline(content)))
-                i = close_idx + 1
-                continue
-            end
-        elseif char == '_' && i < length(text) && text[i+1] != ' '
-            # Italic
-            if !isempty(current_text)
-                push!(nodes, Text(current_text))
-                current_text = ""
-            end
-
-            close_idx = findnext('_', text, i+1)
-            if close_idx !== nothing
-                content = text[i+1:close_idx-1]
-                push!(nodes, Italic(parse_inline(content)))
-                i = close_idx + 1
-                continue
-            end
-        elseif char == '`' && i < length(text)
-            # Monospace
-            if !isempty(current_text)
-                push!(nodes, Text(current_text))
-                current_text = ""
-            end
-
-            close_idx = findnext('`', text, i+1)
-            if close_idx !== nothing
-                content = text[i+1:close_idx-1]
-                push!(nodes, Monospace([Text(content)]))
-                i = close_idx + 1
-                continue
-            end
-        elseif char == '~' && i < length(text) && text[i+1] != ' '
-            # Subscript
-            if !isempty(current_text)
-                push!(nodes, Text(current_text))
-                current_text = ""
-            end
-
-            close_idx = findnext('~', text, i+1)
-            if close_idx !== nothing
-                content = text[i+1:close_idx-1]
-                push!(nodes, Subscript(parse_inline(content)))
-                i = close_idx + 1
-                continue
-            end
-        elseif char == '^' && i < length(text) && text[i+1] != ' '
-            # Superscript
-            if !isempty(current_text)
-                push!(nodes, Text(current_text))
-                current_text = ""
-            end
-
-            close_idx = findnext('^', text, i+1)
-            if close_idx !== nothing
-                content = text[i+1:close_idx-1]
-                push!(nodes, Superscript(parse_inline(content)))
-                i = close_idx + 1
-                continue
-            end
-        elseif startswith(text[i:end], "http://") || startswith(text[i:end], "https://")
-            # Link
-            if !isempty(current_text)
-                push!(nodes, Text(current_text))
-                current_text = ""
-            end
-
-            # Find end of URL (space or bracket)
-            url_match = match(r"^(https?://[^\s\[\]]+)(?:\[([^\]]+)\])?", text[i:end])
-            if url_match !== nothing
-                url = String(url_match.captures[1])
-                link_text = url_match.captures[2]
-                if link_text !== nothing
-                    push!(nodes, Link(url, parse_inline(link_text)))
-                    i += length(url_match.match)
-                else
-                    push!(nodes, Link(url))
-                    i += length(url)
-                end
-                continue
-            end
-        elseif startswith(text[i:end], "image:")
-            # Image
-            if !isempty(current_text)
-                push!(nodes, Text(current_text))
-                current_text = ""
-            end
-
-            img_match = match(r"^image:([^\[]+)(?:\[([^\]]*)\])?", text[i:end])
-            if img_match !== nothing
-                url = String(img_match.captures[1])
-                alt = img_match.captures[2] !== nothing ? String(img_match.captures[2]) : ""
-                push!(nodes, Image(url, alt))
-                i += length(img_match.match)
-                continue
-            end
-        elseif startswith(text[i:end], "<<")
-            # Cross-reference
-            if !isempty(current_text)
-                push!(nodes, Text(current_text))
-                current_text = ""
-            end
-
-            xref_match = match(r"^<<([^,>]+)(?:,([^>]+))?>>", text[i:end])
-            if xref_match !== nothing
-                target = String(xref_match.captures[1])
-                xref_text = xref_match.captures[2]
-                if xref_text !== nothing
-                    push!(nodes, CrossRef(target, parse_inline(xref_text)))
-                else
-                    push!(nodes, CrossRef(target))
-                end
-                i += length(xref_match.match)
-                continue
-            end
-        end
-
-        # Regular character
-        current_text *= char
-        i += 1
-    end
-
-    if !isempty(current_text)
-        push!(nodes, Text(current_text))
-    end
-
-    return nodes
 end
