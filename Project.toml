@@ -1,11 +1,13 @@
 name = "AsciiDoc"
 uuid = "8d64b9e2-4e3f-4a7d-9c8f-1e2d3f4a5b6c"
-authors = ["Your Name <your.email@example.com>"]
 version = "0.1.0"
+authors = ["Your Name <your.email@example.com>"]
 
 [deps]
+MarkdownAST = "d0879d2d-cac2-40c8-9cee-1863dc0c7391"
 
 [compat]
+MarkdownAST = "0.1.2"
 julia = "1.10"
 
 [extras]

@@ -56,13 +56,14 @@ include("ast.jl")
 include("parser.jl")
 include("latex.jl")
 include("html.jl")
+include("integration.jl")
 
 # Main module exports
 export Document, Header, Paragraph, CodeBlock, BlockQuote,
        UnorderedList, OrderedList, DefinitionList,
        Table, HorizontalRule,
        Text, Bold, Italic, Monospace, Link, Image, CrossRef,
-       parse, convert, LaTeX, HTML
+       parse, convert, LaTeX, HTML, to_markdownast
 
 # Backend types for convert API
 struct LaTeXBackend end
