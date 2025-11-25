@@ -134,10 +134,14 @@ end
 Convert an admonition to HTML, writing to IO.
 
 Produces semantic HTML with appropriate classes for styling.
+Uses custom title if provided, otherwise defaults to capitalized type.
 """
 function to_html(io::IO, node::Admonition)
     print(io, "<div class=\"admonition ", node.type, "\">\n")
-    print(io, "<p class=\"admonition-title\">", uppercase(node.type[1:1]), node.type[2:end], "</p>\n")
+
+    # Use custom title if provided, otherwise default to capitalized type
+    title = isempty(node.title) ? uppercase(node.type[1:1]) * node.type[2:end] : node.title
+    print(io, "<p class=\"admonition-title\">", escape_html(title), "</p>\n")
 
     for block in node.content
         to_html(io, block)

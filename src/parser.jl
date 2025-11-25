@@ -251,6 +251,8 @@ function _parse_asciidoc_state(state::ParserState)
             push!(blocks, block)
         elseif (block = try_parse_table(state)) !== nothing
             push!(blocks, block)
+        elseif (block = try_parse_block_image(state)) !== nothing
+            push!(blocks, block)
         elseif (block = try_parse_paragraph(state)) !== nothing
             push!(blocks, block)
         else
@@ -413,6 +415,7 @@ Supports two forms:
 2. Block form:
    ```
    [NOTE]
+   .Optional Title
    ====
    Content here
    ====
@@ -426,6 +429,17 @@ function try_parse_admonition(state::ParserState)
     if block_match !== nothing
         admon_type = lowercase(String(block_match.captures[1]))
         next_line!(state)
+
+        # Check for optional title (.Title syntax)
+        title = ""
+        next_line_content = peek_line(state)
+        if next_line_content !== nothing
+            title_match = match(r"^\.(.+)$", strip(next_line_content))
+            if title_match !== nothing
+                title = String(title_match.captures[1])
+                next_line!(state)
+            end
+        end
 
         delim_line = peek_line(state)
         if delim_line !== nothing && startswith(strip(delim_line), "====")
@@ -444,7 +458,7 @@ function try_parse_admonition(state::ParserState)
             content_text = join(content_lines, '\n')
             inner_doc = parse_asciidoc(content_text)
 
-            return Admonition(admon_type, inner_doc.blocks)
+            return Admonition(admon_type, inner_doc.blocks, title)
         else
             # No delimiter means single paragraph until blank line.
             content_lines = String[]
@@ -459,9 +473,9 @@ function try_parse_admonition(state::ParserState)
 
             if !isempty(content_lines)
                 content_text = join(content_lines, " ")
-                return Admonition(admon_type, [Paragraph(parse_inline(content_text, state.attributes))])
+                return Admonition(admon_type, BlockNode[Paragraph(parse_inline(content_text, state.attributes))], title)
             else
-                return Admonition(admon_type, BlockNode[])
+                return Admonition(admon_type, BlockNode[], title)
             end
         end
     end
@@ -493,7 +507,7 @@ function try_parse_admonition(state::ParserState)
         end
 
         if !isempty(strip(content))
-            return Admonition(admon_type, [Paragraph(parse_inline(content, state.attributes))])
+            return Admonition(admon_type, BlockNode[Paragraph(parse_inline(content, state.attributes))])
         else
             return Admonition(admon_type, BlockNode[])
         end
@@ -646,14 +660,17 @@ function try_parse_list(state::ParserState)
     line = peek_line(state)
     line === nothing && return nothing
 
-    if match(r"^\s*[\*\-]\s+", line) !== nothing
+    # Unordered list: *, **, ***, or -
+    if match(r"^\*+\s+", line) !== nothing || match(r"^-\s+", line) !== nothing
         return parse_unordered_list(state)
     end
 
-    if match(r"^\s*\.+\s+", line) !== nothing || match(r"^\s*\d+\.\s+", line) !== nothing
+    # Ordered list: ., .., ..., or 1. 2. etc.
+    if match(r"^\.+\s+", line) !== nothing || match(r"^\d+\.\s+", line) !== nothing
         return parse_ordered_list(state)
     end
 
+    # Definition list: term::
     if match(r"^.+::\s*$", line) !== nothing
         return parse_definition_list(state)
     end
@@ -662,20 +679,51 @@ function try_parse_list(state::ParserState)
 end
 
 """
-    parse_unordered_list(state::ParserState) -> UnorderedList
+    parse_unordered_list(state::ParserState, level::Int=1) -> UnorderedList
 
-Parse an unordered list.
+Parse an unordered list with support for nesting.
+
+AsciiDoc nesting uses multiple markers:
+- `*` = level 1
+- `**` = level 2
+- `***` = level 3, etc.
 """
-function parse_unordered_list(state::ParserState)
+function parse_unordered_list(state::ParserState, level::Int=1)
     items = ListItem[]
 
     while (line = peek_line(state)) !== nothing
-        m = match(r"^\s*[\*\-]\s+(.*)$", line)
+        # Match unordered list item: capture marker and content
+        m = match(r"^(\*+|-)\s+(.*)$", line)
         if m === nothing
             break
         end
 
-        content = String(m.captures[1])
+        marker = m.captures[1]
+        item_level = marker == "-" ? 1 : length(marker)
+
+        # If this item is at a higher level (fewer *), we're done with this list
+        if item_level < level
+            break
+        end
+
+        # If this item is at a deeper level, it belongs to a nested list
+        if item_level > level
+            # Don't consume this line - let nested parsing handle it
+            # Attach nested list to the last item
+            if !isempty(items)
+                nested = parse_unordered_list(state, item_level)
+                # Replace last item with one that has the nested list
+                last_item = items[end]
+                items[end] = ListItem(last_item.content, nested)
+            else
+                # No parent item - skip this malformed nested item
+                next_line!(state)
+            end
+            continue
+        end
+
+        # This item is at our level - consume it
+        content = String(m.captures[2])
         next_line!(state)
 
         push!(items, ListItem(parse_inline(content, state.attributes)))
@@ -742,13 +790,37 @@ end
 """
     try_parse_table(state::ParserState) -> Union{Table,Nothing}
 
-Try to parse a table (|===).
+Try to parse a table (|===), including preceding attribute block.
+
+Supports:
+- `[cols="1,1,1"]` - column specification
+- `[options="header"]` - table options
 """
 function try_parse_table(state::ParserState)
     line = peek_line(state)
     line === nothing && return nothing
 
-    if startswith(line, "|===")
+    table_attrs = Dict{String,String}()
+    has_attrs = false
+
+    # Check for attribute block before table - use lookahead
+    attr_match = match(r"^\[([^\]]+)\]\s*$", strip(line))
+    if attr_match !== nothing
+        # Lookahead: check if next line is table start (without consuming current line)
+        if state.pos + 1 <= length(state.lines)
+            next_line_content = state.lines[state.pos + 1]
+            if startswith(next_line_content, "|===")
+                # This is a table with attributes - consume the attribute line
+                attr_str = attr_match.captures[1]
+                _parse_block_attributes!(table_attrs, String(attr_str))
+                next_line!(state)
+                line = peek_line(state)
+                has_attrs = true
+            end
+        end
+    end
+
+    if line !== nothing && startswith(line, "|===")
         next_line!(state)
 
         rows = TableRow[]
@@ -781,7 +853,75 @@ function try_parse_table(state::ParserState)
             next_line!(state)
         end
 
-        return Table(rows)
+        return Table(rows, table_attrs)
+    end
+
+    return nothing
+end
+
+"""
+    _parse_block_attributes!(attrs::Dict{String,String}, attr_str::String)
+
+Parse block attributes like `cols="1,1,1", options="header"` into a dictionary.
+"""
+function _parse_block_attributes!(attrs::Dict{String,String}, attr_str::String)
+    # Handle various formats:
+    # - cols="1,1,1"
+    # - options="header"
+    # - cols="1,1,1", options="header"
+
+    # Simple key=value parsing (handles quoted values)
+    for m in eachmatch(r"(\w+)\s*=\s*\"([^\"]*)\"|(\w+)\s*=\s*([^\s,\]]+)", attr_str)
+        if m.captures[1] !== nothing
+            # Quoted value: key="value"
+            attrs[String(m.captures[1])] = String(m.captures[2])
+        elseif m.captures[3] !== nothing
+            # Unquoted value: key=value
+            attrs[String(m.captures[3])] = String(m.captures[4])
+        end
+    end
+end
+
+"""
+    try_parse_block_image(state::ParserState) -> Union{Paragraph,Nothing}
+
+Try to parse a block image (image::path[alt]).
+
+Block images use double colons and stand alone on a line.
+Returns a Paragraph containing just the Image node.
+"""
+function try_parse_block_image(state::ParserState)
+    line = peek_line(state)
+    line === nothing && return nothing
+
+    # Block image: image::path[alt,width,height]
+    m = match(r"^image::([^\[]+)\[([^\]]*)\]\s*$", strip(line))
+    if m !== nothing
+        url = String(m.captures[1])
+        attrs_str = String(m.captures[2])
+        next_line!(state)
+
+        # Parse attributes: first is alt text, then named attrs like width=, height=
+        attrs = Dict{String,String}()
+        alt_text = ""
+
+        if !isempty(attrs_str)
+            parts = split(attrs_str, ',')
+            for (i, part) in enumerate(parts)
+                part = strip(String(part))
+                if i == 1 && !contains(part, "=")
+                    # First part without = is alt text
+                    alt_text = part
+                elseif contains(part, "=")
+                    kv = split(part, '=', limit=2)
+                    if length(kv) == 2
+                        attrs[strip(String(kv[1]))] = strip(String(kv[2]))
+                    end
+                end
+            end
+        end
+
+        return Paragraph(InlineNode[Image(url, alt_text, attrs)])
     end
 
     return nothing

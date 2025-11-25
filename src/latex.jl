@@ -106,12 +106,14 @@ Convert an admonition to LaTeX, writing to IO.
 
 Uses a simple boxed format. For better styling, consider using
 packages like tcolorbox in your document preamble.
+Uses custom title if provided, otherwise defaults to capitalized type.
 """
 function to_latex(io::IO, node::Admonition)
-    title = uppercase(node.type[1:1]) * node.type[2:end]
+    # Use custom title if provided, otherwise default to capitalized type
+    title = isempty(node.title) ? uppercase(node.type[1:1]) * node.type[2:end] : node.title
 
     print(io, "\\begin{quote}\n")
-    print(io, "\\textbf{", title, ":} ")
+    print(io, "\\textbf{", escape_latex(title), ":} ")
 
     for (idx, block) in enumerate(node.content)
         to_latex(io, block)

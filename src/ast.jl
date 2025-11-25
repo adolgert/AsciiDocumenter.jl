@@ -78,17 +78,21 @@ end
 BlockQuote(blocks::Vector{BlockNode}) = BlockQuote(blocks, "")
 
 """
-    Admonition(type::String, content::Vector{BlockNode})
+    Admonition(type::String, content::Vector{BlockNode}, title::String="")
 
 An admonition block (NOTE, TIP, IMPORTANT, WARNING, CAUTION).
 
 The `type` field contains the lowercase admonition type.
 The `content` field contains the block content of the admonition.
+The `title` field contains an optional custom title (from `.Title` syntax).
 """
 struct Admonition <: BlockNode
     type::String  # "note", "tip", "important", "warning", "caution"
     content::Vector{BlockNode}
+    title::String
 end
+
+Admonition(type::String, content::Vector{BlockNode}) = Admonition(type, content, "")
 
 abstract type List <: BlockNode end
 

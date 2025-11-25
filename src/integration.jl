@@ -164,7 +164,8 @@ function convert_admonition(node::Admonition)
     )
 
     category = get(category_map, node.type, "note")
-    title = uppercase(node.type[1:1]) * node.type[2:end]
+    # Use custom title if provided, otherwise default to capitalized type
+    title = isempty(node.title) ? uppercase(node.type[1:1]) * node.type[2:end] : node.title
 
     admon_node = Node(MarkdownAST.Admonition(category, title))
 
