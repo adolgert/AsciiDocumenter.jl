@@ -1,0 +1,124 @@
+= Basic Elements
+
+== Headings
+
+This document tests basic Markdown elements that Documenter supports.
+
+=== Third Level
+
+==== Fourth Level
+
+== Paragraphs and Formatting
+
+This is a simple paragraph with *bold text* and _italic text_.
+You can also have `inline code` within paragraphs.
+
+Here is another paragraph with *_bold italic_* text combined.
+
+== Code Blocks
+
+Here's a simple code block:
+
+[source,julia]
+----
+function greet(name)
+    println("Hello, $name!")
+end
+
+greet("World")
+----
+
+And one without a language:
+
+----
+Plain text code block
+with multiple lines
+----
+
+== Lists
+
+=== Unordered Lists
+
+* First item
+* Second item
+* Third item with *bold*
+
+=== Ordered Lists
+
+. First step
+. Second step
+. Third step
+
+=== Nested Lists
+
+* Outer item 1
+** Inner item A
+** Inner item B
+* Outer item 2
+** Inner item C
+
+== Links and Images
+
+Visit https://julialang.org[Julia] for more information.
+
+Here's an inline link to https://documenter.juliadocs.org[Documenter.jl].
+
+image::assets/logo.png[Julia Logo]
+
+== Block Quotes
+
+____
+This is a block quote.
+It can span multiple lines.
+____
+
+____
+Another quote with *formatting* inside.
+____
+
+== Horizontal Rules
+
+Above the rule.
+
+'''
+
+Below the rule.
+
+== Tables
+
+[cols="1,1,1"]
+|===
+| Column A | Column B | Column C
+
+| A1
+| B1
+| C1
+
+| A2
+| B2
+| C2
+
+| A3
+| B3
+| C3
+|===
+
+== Admonitions
+
+[NOTE]
+.A Note
+====
+This is a note admonition.
+It has multiple lines.
+====
+
+[WARNING]
+.Be Careful
+====
+This is a warning.
+====
+
+[TIP]
+====
+A tip without a custom title.
+====

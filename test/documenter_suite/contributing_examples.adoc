@@ -1,0 +1,214 @@
+= Contributing Test Examples
+
+This guide explains how to add, debug, and evaluate test examples in the Documenter test suite.
+
+== Overview
+
+The test suite compares AsciiDoc documents with equivalent Markdown documents to verify that the AsciiDoc parser produces output suitable for Documenter.jl. Each test case consists of a matched pair of files:
+
+* `example.md` - The Markdown reference document
+* `example.adoc` - The equivalent AsciiDoc document
+
+== Adding New Examples
+
+=== Step 1: Create the Markdown File
+
+Create a new `.md` file in `test/documenter_suite/`:
+
+[source,markdown]
+----
+# My New Example
+
+## Section One
+
+This is a paragraph with **bold** and *italic* text.
+
+## Section Two
+
+- Item one
+- Item two
+----
+
+=== Step 2: Create the Equivalent AsciiDoc File
+
+Create a matching `.adoc` file with equivalent content:
+
+[source,asciidoc]
+----
+= My New Example
+
+== Section One
+
+This is a paragraph with *bold* and _italic_ text.
+
+== Section Two
+
+* Item one
+* Item two
+----
+
+=== Step 3: Add the Test Case
+
+Add a test block in `documenter_suite_tests.jl`:
+
+[source,julia]
+----
+@testset "My New Example" begin
+    md_ast, adoc_ast = load_test_pair("my_new_example")
+    result = compare_documents(md_ast, adoc_ast; name="my_new_example")
+
+    print_comparison_report(result)
+
+    @testset "Structure" begin
+        @test result.md_manifest[:Heading] == result.adoc_manifest[:Heading]
+        @test result.md_manifest[:List] == result.adoc_manifest[:List]
+    end
+end
+----
+
+== Debugging Failed Tests
+
+=== Understanding the Comparison Report
+
+When tests fail, the comparison report shows element counts for both formats:
+
+----
+Element Counts:
+----------------------------------------
+Element             Markdown  AsciiDoc
+----------------------------------------
+Heading             4         4
+Paragraph           3         5         <--
+List                2         2
+----
+
+The arrow indicates a mismatch. In this example, AsciiDoc produced more paragraphs.
+
+=== Using the Diff Report
+
+The `ast_diff` function provides detailed structural differences:
+
+[source,julia]
+----
+diffs = ast_diff(md_ast, adoc_ast)
+for diff in diffs
+    println(diff)
+end
+----
+
+Output shows the path to each difference:
+
+----
+root/Paragraph[3]: children count mismatch - 2 vs 3
+root/List[1]/Item[2]: type mismatch - Text vs Strong
+----
+
+=== Inspecting Individual ASTs
+
+To examine the AST structure directly:
+
+[source,julia]
+----
+using AsciiDoc
+using MarkdownAST
+
+# Parse and convert AsciiDoc
+adoc_text = read("test/documenter_suite/example.adoc", String)
+adoc_ast = to_markdownast(parse(adoc_text))
+
+# Print the AST
+println(adoc_ast)
+
+# Count elements
+manifest = element_manifest(adoc_ast)
+println(manifest)
+----
+
+=== Common Issues
+
+[cols="1,1,1"]
+|===
+| Issue | Cause | Solution
+
+| Extra paragraphs
+| Admonition content
+| Use `>=` comparison
+
+| Different list counts
+| Nested list syntax
+| Check `**` vs indentation
+
+| Missing formatting
+| Wrong delimiter
+| Verify `*bold*` vs `**bold**`
+|===
+
+== Evaluating Examples
+
+=== Running All Tests
+
+[source,bash]
+----
+julia --project=. -e 'include("test/documenter_suite_tests.jl")'
+----
+
+=== Running a Single Test Pair
+
+[source,julia]
+----
+using AsciiDoc
+using MarkdownAST
+
+include("test/ast_comparison.jl")
+include("test/equivalence_tests.jl")
+using .EquivalenceTests: markdown_to_ast
+
+# Load and compare
+md_text = read("test/documenter_suite/basic_elements.md", String)
+adoc_text = read("test/documenter_suite/basic_elements.adoc", String)
+
+md_ast = markdown_to_ast(md_text)
+adoc_ast = to_markdownast(parse(adoc_text))
+
+# Get comparison
+result = compare_documents(md_ast, adoc_ast; name="basic_elements")
+print_comparison_report(result)
+----
+
+=== Checking Text Content
+
+To verify that the same information is present regardless of formatting:
+
+[source,julia]
+----
+# Extract all text content
+md_text_content = extract_text_content(md_ast)
+adoc_text_content = extract_text_content(adoc_ast)
+
+# Compare normalized text
+@test text_content_equal(md_ast, adoc_ast)
+----
+
+=== Element-by-Element Inspection
+
+[source,julia]
+----
+# Find all code blocks
+for child in adoc_ast.children
+    if child.element isa MarkdownAST.CodeBlock
+        println("Language: ", child.element.info)
+        println("Code: ", child.element.code)
+    end
+end
+----
+
+== Best Practices
+
+. *Start simple* - Begin with basic elements before adding complex structures
+. *Test incrementally* - Add one feature at a time to isolate issues
+. *Document differences* - Note expected differences in test comments
+. *Use flexible assertions* - Use `>=` when counts may legitimately differ
+
+TIP: Use the Julia REPL for interactive debugging. Load the test files once, then modify and re-parse as needed.
+
+WARNING: AsciiDoc and Markdown handle nested lists differently. AsciiDoc uses `**` markers while Markdown uses indentation. Expect different `Item` counts for nested structures.

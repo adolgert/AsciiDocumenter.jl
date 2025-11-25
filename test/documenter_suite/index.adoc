@@ -1,0 +1,112 @@
+= Documentation
+
+== Index Page
+
+This is the main documentation index page.
+
+== Contents
+
+The documentation is organized into the following sections:
+
+* *Functions* - API reference for all exported functions
+* *Tutorial* - Step-by-step guide to get started
+* *Examples* - Code examples and use cases
+
+== Quick Start
+
+[source,julia]
+----
+using MyPackage
+
+# Create a new instance
+obj = MyType()
+
+# Call a function
+result = process(obj)
+----
+
+== Features
+
+* Easy to use API
+* High performance
+* Well documented
+
+== Admonitions
+
+[NOTE]
+.'note' admonition
+====
+Admonitions look like this. This is a `!!! note`-type admonition.
+
+Note that admonitions themselves can contain other block-level elements too,
+such as code blocks. E.g.
+
+[source,julia]
+----
+f(x) = x^2
+----
+====
+
+[NOTE]
+.'info' admonition
+====
+This is a `!!! info`-type admonition.
+====
+
+[TIP]
+.'tip' admonition
+====
+This is a `!!! tip`-type admonition.
+====
+
+[WARNING]
+.'warning' admonition
+====
+This is a `!!! warning`-type admonition.
+====
+
+[CAUTION]
+.'danger' admonition
+====
+This is a `!!! danger`-type admonition.
+====
+
+== Headings in Block Context
+
+[NOTE]
+.Blocks in block context
+====
+[source,julia]
+----
+x^2
+----
+
+Headings work in admonitions too.
+====
+
+Also in block quotes:
+
+____
+[source,julia]
+----
+x^2
+----
+
+Quoted code works too.
+____
+
+== Links and References
+
+* Visit the https://julialang.org[Julia website]
+* See the link:lib/functions.md[API documentation]
+* Check the link:man/tutorial.md[Tutorial]
+
+== Symbols and Special Characters
+
+I will pay $1 if the math is displayed correctly.
+
+Common symbols:
+
+* Check mark: ✓
+* Warning: ⚠
+* Info: ℹ

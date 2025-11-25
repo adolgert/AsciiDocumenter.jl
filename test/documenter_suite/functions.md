@@ -1,0 +1,185 @@
+# API Reference
+
+This document provides the complete API reference for the package.
+
+## Module Overview
+
+```julia
+module MyPackage
+
+export MyType, process, analyze, transform
+
+end
+```
+
+## Types
+
+### `MyType`
+
+```julia
+struct MyType
+    name::String
+    data::Vector{Float64}
+    config::Dict{String,Any}
+end
+```
+
+A container type for holding data and configuration.
+
+**Fields**
+
+* `name::String` - Identifier for this instance
+* `data::Vector{Float64}` - The data array
+* `config::Dict{String,Any}` - Configuration options
+
+**Constructors**
+
+```julia
+MyType(name::String)
+MyType(name::String, data::Vector{Float64})
+MyType(name::String, data::Vector{Float64}, config::Dict)
+```
+
+### `Result`
+
+```julia
+struct Result{T}
+    value::T
+    success::Bool
+    message::String
+end
+```
+
+A result type for wrapping return values with status information.
+
+## Functions
+
+### `process`
+
+```julia
+process(obj::MyType) -> Result
+process(obj::MyType, options::Dict) -> Result
+```
+
+Process the data contained in `obj`.
+
+**Arguments**
+
+* `obj::MyType` - The object to process
+* `options::Dict` - Optional processing options
+
+**Returns**
+
+A `Result` object containing the processed data.
+
+**Example**
+
+```julia
+obj = MyType("example", [1.0, 2.0, 3.0])
+result = process(obj)
+if result.success
+    println("Processed: ", result.value)
+end
+```
+
+### `analyze`
+
+```julia
+analyze(data::Vector{Float64}) -> NamedTuple
+analyze(data::Vector{Float64}; detailed::Bool=false) -> NamedTuple
+```
+
+Analyze the given data and return statistics.
+
+**Arguments**
+
+* `data::Vector{Float64}` - Data to analyze
+* `detailed::Bool=false` - Whether to include detailed statistics
+
+**Returns**
+
+A named tuple with fields:
+* `mean` - Arithmetic mean
+* `std` - Standard deviation
+* `min` - Minimum value
+* `max` - Maximum value
+
+**Example**
+
+```julia
+data = [1.0, 2.0, 3.0, 4.0, 5.0]
+stats = analyze(data)
+println("Mean: ", stats.mean)
+println("Std: ", stats.std)
+```
+
+### `transform`
+
+```julia
+transform(x::Number, f::Function) -> Number
+transform(arr::AbstractArray, f::Function) -> AbstractArray
+```
+
+Apply a transformation function to the input.
+
+**Arguments**
+
+* `x` - Input value or array
+* `f` - Transformation function
+
+**Returns**
+
+Transformed value(s).
+
+## Constants
+
+### `DEFAULT_CONFIG`
+
+```julia
+const DEFAULT_CONFIG = Dict(
+    "verbose" => false,
+    "max_iter" => 1000,
+    "tol" => 1e-8
+)
+```
+
+Default configuration used when no config is provided.
+
+### `VERSION`
+
+```julia
+const VERSION = v"1.2.3"
+```
+
+Current package version.
+
+## Internal Functions
+
+!!! warning "Internal API"
+    The following functions are internal and may change without notice.
+
+### `_validate`
+
+```julia
+_validate(obj::MyType) -> Bool
+```
+
+Internal validation function.
+
+### `_initialize`
+
+```julia
+_initialize(config::Dict) -> Dict
+```
+
+Internal initialization function.
+
+## Index
+
+| Function | Description |
+|----------|-------------|
+| `process` | Process data |
+| `analyze` | Analyze statistics |
+| `transform` | Apply transformation |
+| `_validate` | Internal validation |
+| `_initialize` | Internal initialization |

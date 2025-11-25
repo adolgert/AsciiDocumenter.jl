@@ -1,0 +1,75 @@
+= Cross-references
+
+This document tests cross-reference functionality.
+
+== Basic Links
+
+* https://julialang.org[External link to Julia]
+* link:index.md[Link to another page]
+* https://docs.julialang.org[Link with title, title="Julia Documentation"]
+
+== Internal References
+
+See the <<introduction>> section below.
+
+Check out the <<code-examples>> for more details.
+
+[[introduction]]
+== Introduction
+
+This is the introduction section that can be referenced from above.
+
+Cross-references allow you to link to:
+
+* Other sections in the same document
+* Other documents in your project
+* External websites
+* Specific functions or types
+
+[[code-examples]]
+== Code Examples
+
+Here are some code examples:
+
+[source,julia]
+----
+# Define a function
+function greet(name)
+    println("Hello, $name!")
+end
+
+# Call the function
+greet("World")
+----
+
+== Named Sections
+
+[[first-named-section]]
+=== First Named Section
+
+Content of the first section.
+
+[[second-named-section]]
+=== Second Named Section
+
+Content of the second section.
+
+You can reference <<first-named-section>> or <<second-named-section>>.
+
+== Special Characters in Headers
+
+=== Section with `code` in title
+
+This section has inline code in its title.
+
+=== Section with _emphasis_
+
+This section has emphasis in its title.
+
+== Summary
+
+Cross-references help users navigate your documentation:
+
+. Use descriptive link text
+. Keep section IDs stable
+. Test all links before publishing

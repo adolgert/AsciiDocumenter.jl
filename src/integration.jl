@@ -319,7 +319,11 @@ end
 
 Convert AsciiDoc Table to MarkdownAST Table.
 
-Note: MarkdownAST has limited table support. Complex tables may not convert perfectly.
+MarkdownAST table structure:
+- Table contains TableHeader section and TableBody section
+- Each section contains TableRow nodes
+- Each TableRow contains TableCell nodes
+- TableCell(align, is_header, column_index) can contain inline elements
 """
 function convert_table(node::Table)
     if isempty(node.rows)
@@ -330,32 +334,71 @@ function convert_table(node::Table)
     ncols = length(node.rows[1].cells)
 
     # Create table with spec (alignment for each column)
-    # Default to left alignment for all columns
     spec = fill(:left, ncols)
     table_node = Node(MarkdownAST.Table(spec))
 
-    # Convert rows
+    # Separate header rows from body rows
+    # First row is typically the header, or rows explicitly marked
+    header_rows = Int[]
+    body_rows = Int[]
+
     for (idx, row) in enumerate(node.rows)
-        row_node = Node(MarkdownAST.TableRow())
+        if idx == 1 || row.is_header
+            push!(header_rows, idx)
+        else
+            push!(body_rows, idx)
+        end
+    end
 
-        for cell in row.cells
-            # Determine if header (first row or explicitly marked)
-            is_header = (idx == 1) || row.is_header
-            cell_element = is_header ? MarkdownAST.TableHeader() : MarkdownAST.TableCell()
-            cell_node = Node(cell_element)
+    # Create header section if there are header rows
+    if !isempty(header_rows)
+        header_section = Node(MarkdownAST.TableHeader())
+        for idx in header_rows
+            row = node.rows[idx]
+            row_node = Node(MarkdownAST.TableRow())
 
-            # Table cells contain inline elements directly (no paragraph wrapper needed)
-            for inline in cell.content
-                child = convert_inline(inline)
-                if child !== nothing
-                    push!(cell_node.children, child)
+            for (col_idx, cell) in enumerate(row.cells)
+                # TableCell(align, is_header_cell, column_index)
+                cell_node = Node(MarkdownAST.TableCell(:left, true, col_idx))
+
+                for inline in cell.content
+                    child = convert_inline(inline)
+                    if child !== nothing
+                        push!(cell_node.children, child)
+                    end
                 end
+
+                push!(row_node.children, cell_node)
             end
 
-            push!(row_node.children, cell_node)
+            push!(header_section.children, row_node)
         end
+        push!(table_node.children, header_section)
+    end
 
-        push!(table_node.children, row_node)
+    # Create body section if there are body rows
+    if !isempty(body_rows)
+        body_section = Node(MarkdownAST.TableBody())
+        for idx in body_rows
+            row = node.rows[idx]
+            row_node = Node(MarkdownAST.TableRow())
+
+            for (col_idx, cell) in enumerate(row.cells)
+                cell_node = Node(MarkdownAST.TableCell(:left, false, col_idx))
+
+                for inline in cell.content
+                    child = convert_inline(inline)
+                    if child !== nothing
+                        push!(cell_node.children, child)
+                    end
+                end
+
+                push!(row_node.children, cell_node)
+            end
+
+            push!(body_section.children, row_node)
+        end
+        push!(table_node.children, body_section)
     end
 
     return table_node
