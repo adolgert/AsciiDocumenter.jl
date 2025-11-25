@@ -260,9 +260,28 @@ end
         quote_file = joinpath(SPEC_PATH, "blocks", "examples", "quote.adoc")
         examples = extract_tagged_examples(quote_file)
 
-        if !isempty(examples) && haskey(examples, "basic")
-            doc = parse(examples["basic"])
-            @test any(b -> b isa BlockQuote, doc.blocks)
+        if !isempty(examples)
+            # Test basic block quote
+            if haskey(examples, "no-cite")
+                doc = parse(examples["no-cite"])
+                @test any(b -> b isa BlockQuote, doc.blocks)
+            end
+
+            # Test block quote with attribution
+            if haskey(examples, "bl")
+                doc = parse(examples["bl"])
+                @test any(b -> b isa BlockQuote, doc.blocks)
+                quote_block = findfirst(b -> b isa BlockQuote, doc.blocks)
+                if quote_block !== nothing
+                    @test !isempty(doc.blocks[quote_block].attribution)
+                end
+            end
+
+            # Test Markdown-style quotes
+            if haskey(examples, "md")
+                doc = parse(examples["md"])
+                @test any(b -> b isa BlockQuote, doc.blocks)
+            end
         else
             @test_skip "Quote examples not available"
         end

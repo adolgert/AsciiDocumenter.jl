@@ -214,12 +214,13 @@ mutable struct ParserState
     attributes::Dict{String,String}
     base_path::String
     include_stack::Vector{String}
+    pending_block_attributes::Dict{String,String}
 end
 
-ParserState(text::String) = ParserState(split(text, '\n'), 1, _builtin_attributes(), pwd(), String[])
-ParserState(text::String, base_path::String) = ParserState(split(text, '\n'), 1, _builtin_attributes(), base_path, String[])
+ParserState(text::String) = ParserState(split(text, '\n'), 1, _builtin_attributes(), pwd(), String[], Dict{String,String}())
+ParserState(text::String, base_path::String) = ParserState(split(text, '\n'), 1, _builtin_attributes(), base_path, String[], Dict{String,String}())
 ParserState(text::String, base_path::String, include_stack::Vector{String}) =
-    ParserState(split(text, '\n'), 1, _builtin_attributes(), base_path, include_stack)
+    ParserState(split(text, '\n'), 1, _builtin_attributes(), base_path, include_stack, Dict{String,String}())
 
 """
     peek_line(state::ParserState)
@@ -337,6 +338,8 @@ function _parse_asciidoc_state(state::ParserState)
             continue
         elseif try_parse_attribute_definition(state)
             continue
+        elseif try_parse_block_attributes(state)
+            continue
         elseif (block = try_parse_header(state)) !== nothing
             push!(blocks, block)
         elseif (block = try_parse_code_block(state)) !== nothing
@@ -344,6 +347,8 @@ function _parse_asciidoc_state(state::ParserState)
         elseif (block = try_parse_passthrough_block(state)) !== nothing
             push!(blocks, block)
         elseif (block = try_parse_block_quote(state)) !== nothing
+            push!(blocks, block)
+        elseif (block = try_parse_markdown_quote(state)) !== nothing
             push!(blocks, block)
         elseif (block = try_parse_admonition(state)) !== nothing
             push!(blocks, block)
@@ -400,6 +405,118 @@ function try_parse_attribute_definition(state::ParserState)
     end
 
     return false
+end
+
+"""
+    try_parse_block_attributes(state::ParserState) -> Bool
+
+Try to parse a block attribute line like `[quote,author,source]` or `[source,julia]`.
+
+Block attributes apply to the following block. They are stored in
+`state.pending_block_attributes` and consumed when the next block is parsed.
+
+Returns true if a block attribute line was parsed, false otherwise.
+"""
+function try_parse_block_attributes(state::ParserState)
+    line = peek_line(state)
+    line === nothing && return false
+
+    # Match [style] or [style,positional1,positional2,...] or [name=value,...]
+    m = match(r"^\[([^\]]+)\]$", strip(line))
+    if m !== nothing
+        content = m.captures[1]
+
+        # Parse the attribute content
+        # Format: style,pos1,pos2,... or name=value pairs or %option shortcuts
+        parts = split(content, ',')
+
+        if !isempty(parts)
+            # First part is typically the style/type
+            style = strip(parts[1])
+
+            # Skip admonition types - they're handled by try_parse_admonition
+            admon_types = ["NOTE", "TIP", "IMPORTANT", "WARNING", "CAUTION"]
+            if uppercase(style) in admon_types
+                return false
+            end
+
+            # Handle %option shorthand format (e.g., %header, %autowidth)
+            if startswith(style, "%")
+                option = style[2:end]
+                state.pending_block_attributes[option] = "true"
+                # Process remaining parts for more options
+                for part in parts[2:end]
+                    p = strip(part)
+                    if startswith(p, "%")
+                        state.pending_block_attributes[p[2:end]] = "true"
+                    end
+                end
+                next_line!(state)
+                return true
+            end
+
+            # Check if it looks like a block style (not an ID like #myid)
+            if !startswith(style, "#") && !contains(style, "=")
+                state.pending_block_attributes["style"] = style
+
+                # Positional attributes depend on the style
+                if lowercase(style) == "quote" || lowercase(style) == "verse"
+                    if length(parts) >= 2
+                        state.pending_block_attributes["attribution"] = strip(parts[2])
+                    end
+                    if length(parts) >= 3
+                        state.pending_block_attributes["citetitle"] = strip(parts[3])
+                    end
+                elseif lowercase(style) == "source"
+                    if length(parts) >= 2
+                        lang_part = strip(parts[2])
+                        # Handle language%linenums format
+                        if contains(lang_part, "%")
+                            lang_parts = split(lang_part, "%")
+                            state.pending_block_attributes["language"] = strip(lang_parts[1])
+                            for opt in lang_parts[2:end]
+                                if strip(opt) == "linenums"
+                                    state.pending_block_attributes["linenums"] = "true"
+                                end
+                            end
+                        else
+                            state.pending_block_attributes["language"] = lang_part
+                        end
+                    end
+                    # Check for linenums in additional parts
+                    for part in parts[3:end]
+                        if strip(part) == "linenums"
+                            state.pending_block_attributes["linenums"] = "true"
+                        end
+                    end
+                end
+
+                # Also parse any name=value pairs
+                for part in parts[2:end]
+                    kv = split(part, '=', limit=2)
+                    if length(kv) == 2
+                        state.pending_block_attributes[strip(kv[1])] = strip(kv[2])
+                    end
+                end
+
+                next_line!(state)
+                return true
+            end
+        end
+    end
+
+    return false
+end
+
+"""
+    consume_pending_attributes!(state::ParserState) -> Dict{String,String}
+
+Return and clear the pending block attributes.
+"""
+function consume_pending_attributes!(state::ParserState)
+    attrs = copy(state.pending_block_attributes)
+    empty!(state.pending_block_attributes)
+    return attrs
 end
 
 """
@@ -491,9 +608,20 @@ function try_parse_code_block(state::ParserState)
     line === nothing && return nothing
 
     if startswith(line, "----")
+        # Consume any pending block attributes
+        pending = consume_pending_attributes!(state)
+
         next_line!(state)
 
-        language = ""
+        # Get language from pending attributes if present
+        language = get(pending, "language", "")
+        attrs = Dict{String,String}()
+
+        # Copy relevant attributes
+        if haskey(pending, "linenums")
+            attrs["linenums"] = pending["linenums"]
+        end
+
         code_lines = String[]
         while (line = peek_line(state)) !== nothing
             if startswith(line, "----")
@@ -506,7 +634,7 @@ function try_parse_code_block(state::ParserState)
 
         callouts = _parse_callout_definitions(state)
 
-        return CodeBlock(join(code_lines, '\n'), language, Dict{String,String}(), callouts)
+        return CodeBlock(join(code_lines, '\n'), language, attrs, callouts)
     end
 
     m = match(r"^\[source(?:,\s*(@?\w+[\w\s]*))?((?:,\s*\w+|%\w+)*)\]$", line)
@@ -599,12 +727,21 @@ end
     try_parse_block_quote(state::ParserState) -> Union{BlockQuote,Nothing}
 
 Try to parse a block quote (____).
+
+Supports attribution via preceding block attributes:
+    [quote,Author Name,Source Title]
+    ____
+    Quote content here.
+    ____
 """
 function try_parse_block_quote(state::ParserState)
     line = peek_line(state)
     line === nothing && return nothing
 
     if startswith(line, "____")
+        # Consume any pending block attributes
+        attrs = consume_pending_attributes!(state)
+
         next_line!(state)
 
         content_lines = String[]
@@ -620,10 +757,83 @@ function try_parse_block_quote(state::ParserState)
         content_text = join(content_lines, '\n')
         inner_doc = parse_asciidoc(content_text)
 
-        return BlockQuote(inner_doc.blocks)
+        # Build attribution string from attributes
+        attribution = ""
+        if haskey(attrs, "attribution")
+            attribution = attrs["attribution"]
+            if haskey(attrs, "citetitle")
+                attribution *= ", " * attrs["citetitle"]
+            end
+        end
+
+        return BlockQuote(inner_doc.blocks, attribution)
     end
 
     return nothing
+end
+
+"""
+    try_parse_markdown_quote(state::ParserState) -> Union{BlockQuote,Nothing}
+
+Try to parse a Markdown-style block quote (lines starting with >).
+
+Supports attribution via trailing `-- Author, Source` line:
+    > Quote content here.
+    > -- Author Name, Source Title
+"""
+function try_parse_markdown_quote(state::ParserState)
+    line = peek_line(state)
+    line === nothing && return nothing
+
+    # Check if line starts with >
+    if !startswith(lstrip(line), ">")
+        return nothing
+    end
+
+    # Consume any pending block attributes
+    attrs = consume_pending_attributes!(state)
+
+    content_lines = String[]
+    while (line = peek_line(state)) !== nothing
+        stripped = lstrip(line)
+        if startswith(stripped, ">")
+            # Remove the > prefix and optional single space after it
+            quote_content = stripped[2:end]
+            if startswith(quote_content, " ")
+                quote_content = quote_content[2:end]
+            end
+            push!(content_lines, quote_content)
+            next_line!(state)
+        else
+            break
+        end
+    end
+
+    # Check for attribution in the content (-- Author, Source)
+    attribution = ""
+    if haskey(attrs, "attribution")
+        attribution = attrs["attribution"]
+        if haskey(attrs, "citetitle")
+            attribution *= ", " * attrs["citetitle"]
+        end
+    elseif !isempty(content_lines)
+        # Check if last line is attribution
+        last_line = content_lines[end]
+        m = match(r"^--\s*(.+)$", last_line)
+        if m !== nothing
+            attribution = String(m.captures[1])
+            pop!(content_lines)
+            # Remove empty line before attribution if present
+            while !isempty(content_lines) && isempty(strip(content_lines[end]))
+                pop!(content_lines)
+            end
+        end
+    end
+
+    content_text = join(content_lines, '\n')
+    inner_doc = parse_asciidoc(content_text)
+
+    return BlockQuote(inner_doc.blocks, attribution)
 end
 
 const ADMONITION_TYPES = ["NOTE", "TIP", "IMPORTANT", "WARNING", "CAUTION"]
@@ -1082,6 +1292,13 @@ function try_parse_table(state::ParserState)
     table_attrs = Dict{String,String}()
     has_attrs = false
 
+    # Check for pending block attributes first (from try_parse_block_attributes)
+    if !isempty(state.pending_block_attributes)
+        pending = consume_pending_attributes!(state)
+        merge!(table_attrs, pending)
+        has_attrs = true
+    end
+
     # Check for attribute block before table - use lookahead
     attr_match = match(r"^\[([^\]]+)\]\s*$", strip(line))
     if attr_match !== nothing
@@ -1105,9 +1322,10 @@ function try_parse_table(state::ParserState)
         rows = TableRow[]
         current_row_cells = TableCell[]
 
-        # Check if header option is set
-        has_header_option = haskey(table_attrs, "options") &&
-                           contains(table_attrs["options"], "header")
+        # Check if header option is set (from [options="header"] or [%header])
+        has_header_option = (haskey(table_attrs, "options") &&
+                           contains(table_attrs["options"], "header")) ||
+                           get(table_attrs, "header", "") == "true"
 
         while (line = peek_line(state)) !== nothing
             if startswith(line, "|===")
