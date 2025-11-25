@@ -9,7 +9,8 @@ export AsciiDocNode, Document, Header, Paragraph, List, ListItem,
        CodeBlock, BlockQuote, Table, TableRow, TableCell,
        InlineNode, Text, Bold, Italic, Monospace, Subscript, Superscript,
        Link, Image, CrossRef, LineBreak, HorizontalRule,
-       OrderedList, UnorderedList, DefinitionList, DefinitionTerm, DefinitionDescription
+       OrderedList, UnorderedList, DefinitionList, DefinitionTerm, DefinitionDescription,
+       Admonition
 
 # Abstract base types
 abstract type AsciiDocNode end
@@ -79,6 +80,19 @@ struct BlockQuote <: BlockNode
 end
 
 BlockQuote(blocks::Vector{BlockNode}) = BlockQuote(blocks, "")
+
+"""
+    Admonition(type::String, content::Vector{BlockNode})
+
+An admonition block (NOTE, TIP, IMPORTANT, WARNING, CAUTION).
+
+The `type` field contains the lowercase admonition type.
+The `content` field contains the block content of the admonition.
+"""
+struct Admonition <: BlockNode
+    type::String  # "note", "tip", "important", "warning", "caution"
+    content::Vector{BlockNode}
+end
 
 # List structures
 abstract type List <: BlockNode end

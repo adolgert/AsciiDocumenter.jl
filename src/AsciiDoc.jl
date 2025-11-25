@@ -75,9 +75,13 @@ const HTML = HTMLBackend
 # Main API
 
 """
-    parse(text::String) -> Document
+    parse(text::String; base_path::String=pwd()) -> Document
 
 Parse AsciiDoc text into a Document AST.
+
+# Arguments
+- `text`: The AsciiDoc source text
+- `base_path`: Directory for resolving include directives (default: current directory)
 
 # Example
 
@@ -87,10 +91,13 @@ doc = parse(\"\"\"
 
 This is a paragraph.
 \"\"\")
+
+# With include support
+doc = parse("include::other.adoc[]"; base_path="/path/to/docs")
 ```
 """
-Base.parse(::Type{Document}, text::String) = parse_asciidoc(text)
-parse(text::String) = Base.parse(Document, text)
+Base.parse(::Type{Document}, text::String; base_path::String=pwd()) = parse_asciidoc(text; base_path=base_path)
+parse(text::String; base_path::String=pwd()) = Base.parse(Document, text; base_path=base_path)
 
 """
     convert(::Type{LaTeX}, doc::Document) -> String

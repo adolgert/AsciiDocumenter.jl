@@ -1,0 +1,5 @@
+= Included Content
+
+This is content from an included file.
+
+It has *bold* and _italic_ text.

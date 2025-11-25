@@ -67,6 +67,8 @@ function convert_block(node::BlockNode)
         return convert_codeblock(node)
     elseif node isa BlockQuote
         return convert_blockquote(node)
+    elseif node isa Admonition
+        return convert_admonition(node)
     elseif node isa UnorderedList
         return convert_unordered_list(node)
     elseif node isa OrderedList
@@ -157,6 +159,46 @@ function convert_blockquote(node::BlockQuote)
     end
 
     return quote_node
+end
+
+"""
+    convert_admonition(node::Admonition) -> MarkdownAST.Node
+
+Convert AsciiDoc Admonition to MarkdownAST Admonition.
+
+Maps AsciiDoc admonition types to Documenter.jl categories:
+- note -> "note"
+- tip -> "tip"
+- important -> "important"
+- warning -> "warning"
+- caution -> "danger"
+"""
+function convert_admonition(node::Admonition)
+    # Map AsciiDoc types to MarkdownAST/Documenter categories
+    category_map = Dict(
+        "note" => "note",
+        "tip" => "tip",
+        "important" => "important",
+        "warning" => "warning",
+        "caution" => "danger"  # Documenter uses "danger" for caution-level
+    )
+
+    category = get(category_map, node.type, "note")
+
+    # Title is the capitalized type
+    title = uppercase(node.type[1:1]) * node.type[2:end]
+
+    admon_node = Node(MarkdownAST.Admonition(category, title))
+
+    # Convert nested blocks
+    for block in node.content
+        child = convert_block(block)
+        if child !== nothing
+            push!(admon_node.children, child)
+        end
+    end
+
+    return admon_node
 end
 
 """

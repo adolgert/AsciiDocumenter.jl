@@ -33,6 +33,13 @@ blockquote { border-left: 4px solid #ccc; margin-left: 0; padding-left: 20px; co
 table { border-collapse: collapse; width: 100%; }
 th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
 th { background-color: #f5f5f5; }
+.admonition { padding: 12px; margin: 12px 0; border-left: 4px solid; border-radius: 4px; }
+.admonition-title { font-weight: bold; margin: 0 0 8px 0; }
+.admonition.note { background-color: #e7f3fe; border-color: #2196F3; }
+.admonition.tip { background-color: #e7f6e7; border-color: #4CAF50; }
+.admonition.important { background-color: #fff3e0; border-color: #FF9800; }
+.admonition.warning { background-color: #fff8e1; border-color: #FFC107; }
+.admonition.caution { background-color: #ffebee; border-color: #f44336; }
 </style>
 </head>
 <body>
@@ -125,6 +132,26 @@ function to_html(io::IO, node::BlockQuote)
     end
 
     print(io, "</blockquote>")
+    return nothing
+end
+
+"""
+    to_html(io::IO, node::Admonition) -> Nothing
+
+Convert an admonition to HTML, writing to IO.
+
+Produces semantic HTML with appropriate classes for styling.
+"""
+function to_html(io::IO, node::Admonition)
+    print(io, "<div class=\"admonition ", node.type, "\">\n")
+    print(io, "<p class=\"admonition-title\">", uppercase(node.type[1:1]), node.type[2:end], "</p>\n")
+
+    for block in node.content
+        to_html(io, block)
+        write(io, "\n")
+    end
+
+    print(io, "</div>")
     return nothing
 end
 

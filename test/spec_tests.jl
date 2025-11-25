@@ -12,7 +12,7 @@ module SpecTests
 using Test
 using AsciiDoc
 # Explicitly import AsciiDoc's parse to avoid ambiguity with Base.parse
-import AsciiDoc: parse, convert, LaTeX, HTML, Document
+import AsciiDoc: parse, convert, LaTeX, HTML, Document, Admonition, Text, Paragraph
 
 # Test DSL for spec compliance
 """
@@ -110,6 +110,8 @@ function any_node(node, pred)
         return any(inline -> any_node(inline, pred), node.content)
     elseif node isa UnorderedList || node isa OrderedList
         return any(item -> any_node(item.content, pred), node.items)
+    elseif node isa Admonition
+        return any(block -> any_node(block, pred), node.content)
     end
 
     return false
@@ -311,11 +313,64 @@ end
 
 @spec_section "Admonitions" "https://docs.asciidoctor.org/asciidoc/latest/blocks/admonitions/" begin
 
-    @test_skip_unimplemented "NOTE admonition" "Not implemented"
-    @test_skip_unimplemented "TIP admonition" "Not implemented"
-    @test_skip_unimplemented "IMPORTANT admonition" "Not implemented"
-    @test_skip_unimplemented "WARNING admonition" "Not implemented"
-    @test_skip_unimplemented "CAUTION admonition" "Not implemented"
+    @test_feature "NOTE admonition (inline form)" "NOTE: text" begin
+        doc = parse("NOTE: This is a note.")
+        assert_first_block_type(doc, Admonition)
+        @test doc.blocks[1].type == "note"
+        @test !isempty(doc.blocks[1].content)
+    end
+
+    @test_feature "TIP admonition (inline form)" "TIP: text" begin
+        doc = parse("TIP: Here's a helpful tip.")
+        assert_first_block_type(doc, Admonition)
+        @test doc.blocks[1].type == "tip"
+    end
+
+    @test_feature "IMPORTANT admonition (inline form)" "IMPORTANT: text" begin
+        doc = parse("IMPORTANT: Don't forget this.")
+        assert_first_block_type(doc, Admonition)
+        @test doc.blocks[1].type == "important"
+    end
+
+    @test_feature "WARNING admonition (inline form)" "WARNING: text" begin
+        doc = parse("WARNING: Be careful here.")
+        assert_first_block_type(doc, Admonition)
+        @test doc.blocks[1].type == "warning"
+    end
+
+    @test_feature "CAUTION admonition (inline form)" "CAUTION: text" begin
+        doc = parse("CAUTION: This may cause issues.")
+        assert_first_block_type(doc, Admonition)
+        @test doc.blocks[1].type == "caution"
+    end
+
+    @test_feature "NOTE admonition (block form)" "[NOTE]\\n====\\ntext\\n====" begin
+        doc = parse("[NOTE]\n====\nThis is a note with *bold* text.\n====")
+        assert_first_block_type(doc, Admonition)
+        @test doc.blocks[1].type == "note"
+        @test !isempty(doc.blocks[1].content)
+    end
+
+    @test_feature "Admonition with multiple paragraphs" "[NOTE]\\n====\\npara1\\n\\npara2\\n====" begin
+        doc = parse("[NOTE]\n====\nFirst paragraph.\n\nSecond paragraph.\n====")
+        assert_first_block_type(doc, Admonition)
+        @test length(doc.blocks[1].content) == 2
+    end
+
+    @test_feature "Admonition HTML output" "NOTE: text -> HTML" begin
+        doc = parse("NOTE: This is a note.")
+        html = convert(HTML, doc)
+        @test contains(html, "admonition")
+        @test contains(html, "note")
+        @test contains(html, "Note")
+    end
+
+    @test_feature "Admonition LaTeX output" "NOTE: text -> LaTeX" begin
+        doc = parse("NOTE: This is a note.")
+        latex = convert(LaTeX, doc)
+        @test contains(latex, "Note")
+        @test contains(latex, "quote")
+    end
 end
 
 # ----------------------------------------------------------------------------
@@ -382,9 +437,53 @@ end
 
 @spec_section "Document Attributes" "https://docs.asciidoctor.org/asciidoc/latest/attributes/document-attributes/" begin
 
-    @test_skip_unimplemented "Attribute definition (:name: value)" "Not implemented"
-    @test_skip_unimplemented "Attribute reference ({name})" "Not implemented"
-    @test_skip_unimplemented "Built-in attributes" "Not implemented"
+    @test_feature "Attribute definition (:name: value)" ":author: John Doe" begin
+        doc = parse(":author: John Doe\n\n= Document")
+        @test haskey(doc.attributes, "author")
+        @test doc.attributes["author"] == "John Doe"
+    end
+
+    @test_feature "Attribute reference ({name})" "Written by {author}" begin
+        doc = parse(":author: John Doe\n\nWritten by {author}")
+        @test !isempty(doc.blocks)
+        para = doc.blocks[1]
+        @test para isa Paragraph
+        # Check that the text was substituted
+        text_content = join([node.content for node in para.content if node isa Text], "")
+        @test contains(text_content, "John Doe")
+    end
+
+    @test_feature "Multiple attributes" ":name: value" begin
+        doc = parse(":author: Alice\n:version: 1.0\n:status: draft\n\n= Doc")
+        @test haskey(doc.attributes, "author")
+        @test haskey(doc.attributes, "version")
+        @test haskey(doc.attributes, "status")
+        @test doc.attributes["author"] == "Alice"
+        @test doc.attributes["version"] == "1.0"
+    end
+
+    @test_feature "Attribute unset (:name!:)" ":name!:" begin
+        doc = parse(":author: Bob\n:author!:\n\n= Doc")
+        @test !haskey(doc.attributes, "author")
+    end
+
+    @test_feature "Attributes in headers" "= {doctitle}" begin
+        doc = parse(":doctitle: My Document\n\n= {doctitle}")
+        @test doc.blocks[1] isa Header
+        # Check that attribute was substituted in header
+        text_content = join([node.content for node in doc.blocks[1].text if node isa Text], "")
+        @test contains(text_content, "My Document")
+    end
+
+    @test_feature "Attributes in lists" "* {item}" begin
+        doc = parse(":item: Test Item\n\n* {item}")
+        @test doc.blocks[1] isa UnorderedList
+        list = doc.blocks[1]
+        item_text = join([node.content for node in list.items[1].content if node isa Text], "")
+        @test contains(item_text, "Test Item")
+    end
+
+    @test_skip_unimplemented "Built-in attributes (automatic)" "Not implemented"
 end
 
 # ----------------------------------------------------------------------------
@@ -393,7 +492,57 @@ end
 
 @spec_section "Include Directive" "https://docs.asciidoctor.org/asciidoc/latest/directives/include/" begin
 
-    @test_skip_unimplemented "include::file.adoc[]" "Not implemented"
+    @test_feature "Basic include directive" "include::file.adoc[]" begin
+        # Test with base_path set to the includes directory
+        includes_dir = joinpath(@__DIR__, "includes")
+        doc = parse("= Main Document\n\ninclude::simple.adoc[]"; base_path=includes_dir)
+
+        # Should have the main header plus included content
+        @test length(doc.blocks) >= 2
+        @test doc.blocks[1] isa Header
+        @test doc.blocks[1].level == 1
+    end
+
+    @test_feature "Include with lines= attribute (single range)" "include::file.adoc[lines=2..4]" begin
+        includes_dir = joinpath(@__DIR__, "includes")
+        doc = parse("include::lines_test.adoc[lines=2..4]"; base_path=includes_dir)
+
+        # Should have content from lines 2-4
+        @test !isempty(doc.blocks)
+        @test doc.blocks[1] isa Paragraph
+    end
+
+    @test_feature "Include with lines= attribute (multiple ranges)" "include::file.adoc[lines=1..2;4..5]" begin
+        includes_dir = joinpath(@__DIR__, "includes")
+        doc = parse("include::lines_test.adoc[lines=1..2;4..5]"; base_path=includes_dir)
+
+        @test !isempty(doc.blocks)
+    end
+
+    @test_feature "Nested includes" "include::nested.adoc[]" begin
+        includes_dir = joinpath(@__DIR__, "includes")
+        doc = parse("include::nested.adoc[]"; base_path=includes_dir)
+
+        # Should have content from nested.adoc which includes simple.adoc
+        @test length(doc.blocks) >= 2
+    end
+
+    @test_feature "parse_asciidoc_file function" "parse_asciidoc_file(path)" begin
+        filepath = joinpath(@__DIR__, "includes", "simple.adoc")
+        doc = AsciiDoc.parse_asciidoc_file(filepath)
+
+        @test !isempty(doc.blocks)
+        @test doc.blocks[1] isa Header
+    end
+
+    @test_feature "Missing include file (graceful handling)" "include::nonexistent.adoc[]" begin
+        includes_dir = joinpath(@__DIR__, "includes")
+        # Should not error, just warn and continue
+        doc = parse("= Doc\n\ninclude::nonexistent.adoc[]\n\nAfter include"; base_path=includes_dir)
+
+        # Should still have the header and the paragraph after the include
+        @test length(doc.blocks) >= 2
+    end
 end
 
 # ----------------------------------------------------------------------------

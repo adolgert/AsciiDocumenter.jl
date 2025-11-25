@@ -1,0 +1,5 @@
+== Nested Include
+
+This file includes another file:
+
+include::simple.adoc[]
