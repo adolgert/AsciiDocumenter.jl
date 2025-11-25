@@ -234,6 +234,91 @@ end
         end
     end
 
+    @testset "Unicode (Documenter Example)" begin
+        md_ast, adoc_ast = load_test_pair("unicode")
+        result = compare_documents(md_ast, adoc_ast; name="unicode")
+
+        print_comparison_report(result)
+
+        @testset "Structure" begin
+            @test result.md_manifest[:Heading] == result.adoc_manifest[:Heading]
+        end
+
+        @testset "Code Blocks" begin
+            # Multiple code blocks with Unicode content
+            @test get(result.md_manifest, :CodeBlock, 0) >= 4
+            @test get(result.adoc_manifest, :CodeBlock, 0) >= 4
+        end
+
+        @testset "Lists" begin
+            @test get(result.md_manifest, :List, 0) >= 1
+            @test get(result.adoc_manifest, :List, 0) >= 1
+        end
+
+        @testset "Inline Code" begin
+            @test get(result.md_manifest, :Code, 0) >= 1
+            @test get(result.adoc_manifest, :Code, 0) >= 1
+        end
+    end
+
+    @testset "Style (Documenter Example)" begin
+        md_ast, adoc_ast = load_test_pair("style")
+        result = compare_documents(md_ast, adoc_ast; name="style")
+
+        print_comparison_report(result)
+
+        @testset "Structure" begin
+            @test result.md_manifest[:Heading] == result.adoc_manifest[:Heading]
+        end
+
+        @testset "Admonitions" begin
+            # Multiple admonitions: note, warning, tip
+            @test get(result.md_manifest, :Admonition, 0) >= 3
+            @test get(result.adoc_manifest, :Admonition, 0) >= 3
+        end
+
+        @testset "Block Quotes" begin
+            @test get(result.md_manifest, :BlockQuote, 0) >= 1
+            @test get(result.adoc_manifest, :BlockQuote, 0) >= 1
+        end
+
+        @testset "Lists" begin
+            @test get(result.md_manifest, :List, 0) >= 1
+            @test get(result.adoc_manifest, :List, 0) >= 1
+        end
+
+        @testset "Code Blocks" begin
+            @test get(result.md_manifest, :CodeBlock, 0) >= 1
+            @test get(result.adoc_manifest, :CodeBlock, 0) >= 1
+        end
+    end
+
+    @testset "LaTeX/Math (Documenter Example)" begin
+        md_ast, adoc_ast = load_test_pair("latex")
+        result = compare_documents(md_ast, adoc_ast; name="latex")
+
+        print_comparison_report(result)
+
+        @testset "Structure" begin
+            @test result.md_manifest[:Heading] == result.adoc_manifest[:Heading]
+        end
+
+        @testset "Code Blocks" begin
+            @test get(result.md_manifest, :CodeBlock, 0) >= 1
+            @test get(result.adoc_manifest, :CodeBlock, 0) >= 1
+        end
+
+        @testset "Admonitions" begin
+            @test get(result.md_manifest, :Admonition, 0) >= 1
+            @test get(result.adoc_manifest, :Admonition, 0) >= 1
+        end
+
+        @testset "Lists" begin
+            @test get(result.md_manifest, :List, 0) >= 1
+            @test get(result.adoc_manifest, :List, 0) >= 1
+        end
+    end
+
 end
 
 # ============================================================================
