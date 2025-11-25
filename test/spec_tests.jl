@@ -551,8 +551,31 @@ end
 
 @spec_section "Comments" "https://docs.asciidoctor.org/asciidoc/latest/comments/" begin
 
-    @test_skip_unimplemented "Single-line comment (//)" "Not implemented"
-    @test_skip_unimplemented "Comment block (////)" "Not implemented"
+    @test_feature "Single-line comment (//)" "// comment" begin
+        doc = parse("= Title\n// This is a comment\nParagraph text")
+        # Comment should be skipped - only header and paragraph remain
+        @test length(doc.blocks) == 2
+        @test doc.blocks[1] isa Header
+        @test doc.blocks[2] isa Paragraph
+    end
+
+    @test_feature "Comment block (////)" "////\\ncomment\\n////" begin
+        doc = parse("= Title\n////\nThis is a\nmulti-line comment\n////\nParagraph text")
+        # Block comment should be skipped - only header and paragraph remain
+        @test length(doc.blocks) == 2
+        @test doc.blocks[1] isa Header
+        @test doc.blocks[2] isa Paragraph
+    end
+
+    @test_feature "Comment does not affect inline content" "text // not comment" begin
+        # // in the middle of a line is NOT a comment
+        doc = parse("Text with // in the middle")
+        @test length(doc.blocks) == 1
+        para = doc.blocks[1]
+        @test para isa Paragraph
+        text_content = join([node.content for node in para.content if node isa Text], "")
+        @test contains(text_content, "//")
+    end
 end
 
 # ----------------------------------------------------------------------------

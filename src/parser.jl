@@ -194,6 +194,46 @@ function skip_blank_lines!(state::ParserState)
 end
 
 """
+    try_skip_comment(state::ParserState) -> Bool
+
+Try to skip a comment (single-line or block).
+
+Single-line comments start with `//` (but not `////` which is a block delimiter).
+Block comments are delimited by `////` on their own lines.
+
+Returns true if a comment was skipped, false otherwise.
+"""
+function try_skip_comment(state::ParserState)
+    line = peek_line(state)
+    line === nothing && return false
+
+    stripped = strip(line)
+
+    # Block comment: //// ... ////
+    if stripped == "////"
+        next_line!(state)  # consume opening ////
+
+        # Skip until closing ////
+        while (line = peek_line(state)) !== nothing
+            if strip(line) == "////"
+                next_line!(state)  # consume closing ////
+                break
+            end
+            next_line!(state)
+        end
+        return true
+    end
+
+    # Single-line comment: // (but not //// which is block delimiter)
+    if startswith(stripped, "//") && !startswith(stripped, "////")
+        next_line!(state)
+        return true
+    end
+
+    return false
+end
+
+"""
     parse_asciidoc(text::String; base_path::String=pwd()) -> Document
 
 Parse an AsciiDoc document into an AST.
@@ -233,7 +273,10 @@ function _parse_asciidoc_state(state::ParserState)
         line = peek_line(state)
         line === nothing && break
 
-        if try_parse_attribute_definition(state)
+        # Skip comments first (they produce no output)
+        if try_skip_comment(state)
+            continue
+        elseif try_parse_attribute_definition(state)
             continue
         elseif (block = try_parse_header(state)) !== nothing
             push!(blocks, block)
@@ -945,8 +988,10 @@ function try_parse_paragraph(state::ParserState)
             break
         end
 
+        # Break on block boundaries
         if startswith(line, "=") || startswith(line, "----") ||
            startswith(line, "____") || startswith(line, "|===") ||
+           startswith(stripped, "//") ||  # Comments (single-line or block)
            match(r"^\s*[\*\-]\s+", line) !== nothing ||
            match(r"^\s*\.+\s+", line) !== nothing
             break
