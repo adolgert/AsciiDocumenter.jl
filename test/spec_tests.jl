@@ -727,7 +727,9 @@ end
     @test_feature "Missing include file (graceful handling)" "include::nonexistent.adoc[]" begin
         includes_dir = joinpath(@__DIR__, "includes")
         # Should not error, just warn and continue
-        doc = parse("= Doc\n\ninclude::nonexistent.adoc[]\n\nAfter include"; base_path=includes_dir)
+        doc = @test_logs (:warn, r"Include file not found") begin
+            parse("= Doc\n\ninclude::nonexistent.adoc[]\n\nAfter include"; base_path=includes_dir)
+        end
 
         # Should still have the header and the paragraph after the include
         @test length(doc.blocks) >= 2
