@@ -63,7 +63,7 @@ export Document, Header, Paragraph, CodeBlock, BlockQuote,
        UnorderedList, OrderedList, DefinitionList,
        Table, HorizontalRule,
        Text, Bold, Italic, Monospace, Link, Image, CrossRef,
-       parse, convert, LaTeX, HTML, to_markdownast
+       parse, convert, LaTeX, HTML, to_markdownast, to_markdown
 
 # Backend types for convert API
 struct LaTeXBackend end
