@@ -40,7 +40,7 @@ import AsciiDoc: parse, to_html, to_latex
             result = String(take!(io))
 
             @test !isempty(result)
-            @test contains(result, "<h1>")
+            @test contains(result, "<h1")  # Headers now have auto-generated IDs
             @test contains(result, "<strong>bold</strong>")
             @test contains(result, "<em>italic</em>")
         end
@@ -81,7 +81,7 @@ import AsciiDoc: parse, to_html, to_latex
                 # Verify file was written correctly
                 @test isfile(filepath)
                 content = read(filepath, String)
-                @test contains(content, "<h1>")
+                @test contains(content, "<h1")  # Headers now have auto-generated IDs
                 @test contains(content, "<strong>bold</strong>")
             end
         end
@@ -203,7 +203,7 @@ import AsciiDoc: parse, to_html, to_latex
 
             result = String(take!(io))
             @test contains(result, "<!-- Header -->")
-            @test contains(result, "<h1>")
+            @test contains(result, "<h1")  # Headers now have auto-generated IDs
             @test contains(result, "<!-- End Header -->")
         end
     end
@@ -241,7 +241,7 @@ import AsciiDoc: parse, to_html, to_latex
             result = String(take!(io))
 
             # Should contain all elements
-            @test contains(result, "<h1>")
+            @test contains(result, "<h1")  # Headers now have auto-generated IDs
             @test occursin(r"Paragraph \d+", result)
             @test occursin(r"Item \d+", result)
         end

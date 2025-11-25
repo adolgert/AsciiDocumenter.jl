@@ -195,7 +195,7 @@ include("markdownast_tests.jl")
         doc = parse("= Title\n\nThis is *bold*.")
         html = convert(HTML, doc)
 
-        @test contains(html, "<h1>Title</h1>")
+        @test contains(html, "<h1 id=\"title\">Title</h1>")  # Headers have auto-generated IDs
         @test contains(html, "<strong>bold</strong>")
 
         # Standalone mode
@@ -210,7 +210,7 @@ include("markdownast_tests.jl")
         @test contains(latex, "\\section{Title}")
 
         html = asciidoc_to_html("= Title\n\nParagraph")
-        @test contains(html, "<h1>Title</h1>")
+        @test contains(html, "<h1 id=\"title\">Title</h1>")  # Headers have auto-generated IDs
 
         html = asciidoc_to_html("= Title\n\nParagraph", standalone=true)
         @test contains(html, "<!DOCTYPE html>")

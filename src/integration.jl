@@ -51,33 +51,22 @@ end
 """
     convert_block(node::BlockNode) -> Union{MarkdownAST.Node, Nothing}
 
-Convert an AsciiDoc block node to MarkdownAST.
+Convert an AsciiDoc block node to MarkdownAST using multiple dispatch.
 """
+convert_block(node::Header) = convert_header(node)
+convert_block(node::Paragraph) = convert_paragraph(node)
+convert_block(node::CodeBlock) = convert_codeblock(node)
+convert_block(node::BlockQuote) = convert_blockquote(node)
+convert_block(node::Admonition) = convert_admonition(node)
+convert_block(node::UnorderedList) = convert_unordered_list(node)
+convert_block(node::OrderedList) = convert_ordered_list(node)
+convert_block(node::DefinitionList) = convert_definition_list(node)
+convert_block(node::Table) = convert_table(node)
+convert_block(node::HorizontalRule) = convert_horizontal_rule(node)
+
 function convert_block(node::BlockNode)
-    if node isa Header
-        return convert_header(node)
-    elseif node isa Paragraph
-        return convert_paragraph(node)
-    elseif node isa CodeBlock
-        return convert_codeblock(node)
-    elseif node isa BlockQuote
-        return convert_blockquote(node)
-    elseif node isa Admonition
-        return convert_admonition(node)
-    elseif node isa UnorderedList
-        return convert_unordered_list(node)
-    elseif node isa OrderedList
-        return convert_ordered_list(node)
-    elseif node isa DefinitionList
-        return convert_definition_list(node)
-    elseif node isa Table
-        return convert_table(node)
-    elseif node isa HorizontalRule
-        return convert_horizontal_rule(node)
-    else
-        @warn "Unknown block node type: $(typeof(node))"
-        return nothing
-    end
+    @warn "Unknown block node type: $(typeof(node))"
+    return nothing
 end
 
 """
@@ -175,7 +164,8 @@ function convert_admonition(node::Admonition)
     )
 
     category = get(category_map, node.type, "note")
-    title = uppercase(node.type[1:1]) * node.type[2:end]
+    # Use custom title if provided, otherwise default to capitalized type
+    title = isempty(node.title) ? uppercase(node.type[1:1]) * node.type[2:end] : node.title
 
     admon_node = Node(MarkdownAST.Admonition(category, title))
 
@@ -391,33 +381,22 @@ end
 """
     convert_inline(node::InlineNode) -> Union{MarkdownAST.Node, Nothing}
 
-Convert an AsciiDoc inline node to MarkdownAST.
+Convert an AsciiDoc inline node to MarkdownAST using multiple dispatch.
 """
+convert_inline(node::Text) = convert_text(node)
+convert_inline(node::Bold) = convert_bold(node)
+convert_inline(node::Italic) = convert_italic(node)
+convert_inline(node::Monospace) = convert_monospace(node)
+convert_inline(node::Subscript) = convert_subscript(node)
+convert_inline(node::Superscript) = convert_superscript(node)
+convert_inline(node::Link) = convert_link(node)
+convert_inline(node::Image) = convert_image(node)
+convert_inline(node::CrossRef) = convert_crossref(node)
+convert_inline(node::LineBreak) = convert_linebreak(node)
+
 function convert_inline(node::InlineNode)
-    if node isa Text
-        return convert_text(node)
-    elseif node isa Bold
-        return convert_bold(node)
-    elseif node isa Italic
-        return convert_italic(node)
-    elseif node isa Monospace
-        return convert_monospace(node)
-    elseif node isa Subscript
-        return convert_subscript(node)
-    elseif node isa Superscript
-        return convert_superscript(node)
-    elseif node isa Link
-        return convert_link(node)
-    elseif node isa Image
-        return convert_image(node)
-    elseif node isa CrossRef
-        return convert_crossref(node)
-    elseif node isa LineBreak
-        return convert_linebreak(node)
-    else
-        @warn "Unknown inline node type: $(typeof(node))"
-        return nothing
-    end
+    @warn "Unknown inline node type: $(typeof(node))"
+    return nothing
 end
 
 """

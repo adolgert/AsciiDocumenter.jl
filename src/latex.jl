@@ -64,17 +64,46 @@ end
     to_latex(io::IO, node::CodeBlock) -> Nothing
 
 Convert a code block to LaTeX using listings or verbatim, writing to IO.
+
+Supports:
+- `linenums` attribute for displaying line numbers
+- Callout definitions rendered as a description list
 """
 function to_latex(io::IO, node::CodeBlock)
-    if isempty(node.language)
+    show_linenums = get(node.attributes, "linenums", "") == "true"
+
+    if isempty(node.language) && !show_linenums
         print(io, "\\begin{verbatim}\n")
         write(io, node.content)
         print(io, "\n\\end{verbatim}")
     else
-        print(io, "\\begin{lstlisting}[language=", node.language, "]\n")
+        # Use lstlisting with options
+        options = String[]
+        if !isempty(node.language)
+            push!(options, "language=" * node.language)
+        end
+        if show_linenums
+            push!(options, "numbers=left")
+        end
+
+        if isempty(options)
+            print(io, "\\begin{lstlisting}\n")
+        else
+            print(io, "\\begin{lstlisting}[", join(options, ", "), "]\n")
+        end
         write(io, node.content)
         print(io, "\n\\end{lstlisting}")
     end
+
+    # Render callout definitions if present
+    if !isempty(node.callouts)
+        print(io, "\n\\begin{description}")
+        for num in sort(collect(keys(node.callouts)))
+            print(io, "\n\\item[", num, "] ", escape_latex(node.callouts[num]))
+        end
+        print(io, "\n\\end{description}")
+    end
+
     return nothing
 end
 
@@ -106,12 +135,14 @@ Convert an admonition to LaTeX, writing to IO.
 
 Uses a simple boxed format. For better styling, consider using
 packages like tcolorbox in your document preamble.
+Uses custom title if provided, otherwise defaults to capitalized type.
 """
 function to_latex(io::IO, node::Admonition)
-    title = uppercase(node.type[1:1]) * node.type[2:end]
+    # Use custom title if provided, otherwise default to capitalized type
+    title = isempty(node.title) ? uppercase(node.type[1:1]) * node.type[2:end] : node.title
 
     print(io, "\\begin{quote}\n")
-    print(io, "\\textbf{", title, ":} ")
+    print(io, "\\textbf{", escape_latex(title), ":} ")
 
     for (idx, block) in enumerate(node.content)
         to_latex(io, block)
@@ -154,9 +185,19 @@ end
     to_latex(io::IO, node::OrderedList) -> Nothing
 
 Convert an ordered list to LaTeX enumerate environment, writing to IO.
+
+Supports `start` attribute for custom starting number.
 """
 function to_latex(io::IO, node::OrderedList)
     print(io, "\\begin{enumerate}\n")
+
+    # Handle custom start number
+    if haskey(node.attributes, "start")
+        start_val = tryparse(Int, node.attributes["start"])
+        if start_val !== nothing && start_val != 1
+            print(io, "\\setcounter{enumi}{", start_val - 1, "}\n")
+        end
+    end
 
     for item in node.items
         print(io, "\\item ")
@@ -201,9 +242,37 @@ function to_latex(io::IO, node::DefinitionList)
 end
 
 """
+    _parse_latex_column_specs(cols::String, ncols::Int) -> String
+
+Parse the cols attribute to generate LaTeX column specifications.
+"""
+function _parse_latex_column_specs(cols::String, ncols::Int)
+    specs = Char[]
+    for spec in split(cols, ',')
+        spec = strip(spec)
+        if startswith(spec, "<")
+            push!(specs, 'l')
+        elseif startswith(spec, "^")
+            push!(specs, 'c')
+        elseif startswith(spec, ">")
+            push!(specs, 'r')
+        else
+            push!(specs, 'l')  # Default to left
+        end
+    end
+    # Pad with 'l' if not enough specs
+    while length(specs) < ncols
+        push!(specs, 'l')
+    end
+    return join(specs, " ")
+end
+
+"""
     to_latex(io::IO, node::Table) -> Nothing
 
 Convert a table to LaTeX tabular environment, writing to IO.
+
+Supports `cols` attribute for column alignment (`<` left, `^` center, `>` right).
 """
 function to_latex(io::IO, node::Table)
     if isempty(node.rows)
@@ -211,29 +280,60 @@ function to_latex(io::IO, node::Table)
     end
 
     ncols = length(node.rows[1].cells)
-    col_spec = join(fill("l", ncols), " ")
+
+    # Parse column alignments from cols attribute
+    if haskey(node.attributes, "cols")
+        col_spec = _parse_latex_column_specs(node.attributes["cols"], ncols)
+    else
+        col_spec = join(fill("l", ncols), " ")
+    end
 
     print(io, "\\begin{tabular}{", col_spec, "}\n")
 
     for (idx, row) in enumerate(node.rows)
         if row.is_header || (idx == 1 && !any(r -> r.is_header, node.rows))
             # First row or explicit header
-            print(io, "\\textbf{")
             for (cell_idx, cell) in enumerate(row.cells)
+                colspan = get(cell.attributes, "colspan", "")
+
+                if !isempty(colspan)
+                    print(io, "\\multicolumn{", colspan, "}{l}{\\textbf{")
+                else
+                    print(io, "\\textbf{")
+                end
+
                 for child in cell.content
                     to_latex(io, child)
                 end
+
+                if !isempty(colspan)
+                    print(io, "}}")
+                else
+                    print(io, "}")
+                end
+
                 if cell_idx < length(row.cells)
-                    print(io, "} & \\textbf{")
+                    print(io, " & ")
                 end
             end
-            print(io, "} \\\\\n")
+            print(io, " \\\\\n")
             print(io, "\\hline\n")
         else
             for (cell_idx, cell) in enumerate(row.cells)
+                colspan = get(cell.attributes, "colspan", "")
+
+                if !isempty(colspan)
+                    print(io, "\\multicolumn{", colspan, "}{l}{")
+                end
+
                 for child in cell.content
                     to_latex(io, child)
                 end
+
+                if !isempty(colspan)
+                    print(io, "}")
+                end
+
                 if cell_idx < length(row.cells)
                     print(io, " & ")
                 end

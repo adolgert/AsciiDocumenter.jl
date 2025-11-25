@@ -142,6 +142,46 @@ function substitute_attributes(text::AbstractString, attributes::Dict{String,Str
 end
 
 """
+    _builtin_attributes() -> Dict{String,String}
+
+Return a dictionary of built-in AsciiDoc attributes.
+These are automatically available in all documents.
+"""
+function _builtin_attributes()
+    Dict{String,String}(
+        # Special characters
+        "nbsp" => "\u00A0",      # Non-breaking space
+        "sp" => " ",              # Space
+        "empty" => "",            # Empty string
+        "blank" => "",            # Blank (same as empty)
+        "amp" => "&",             # Ampersand
+        "lt" => "<",              # Less than
+        "gt" => ">",              # Greater than
+        "quot" => "\"",           # Quotation mark
+        "apos" => "'",            # Apostrophe
+        "brvbar" => "¦",          # Broken vertical bar
+        "vbar" => "|",            # Vertical bar
+        "zwsp" => "\u200B",       # Zero-width space
+        "wj" => "\u2060",         # Word joiner
+        "deg" => "°",             # Degree symbol
+        "plus" => "+",            # Plus sign
+        "caret" => "^",           # Caret
+        "tilde" => "~",           # Tilde
+        "backslash" => "\\",      # Backslash
+        "backtick" => "`",        # Backtick
+        "startsb" => "[",         # Left square bracket
+        "endsb" => "]",           # Right square bracket
+        "lsquo" => "\u2018",      # Left single quote '
+        "rsquo" => "\u2019",      # Right single quote '
+        "ldquo" => "\u201C",      # Left double quote "
+        "rdquo" => "\u201D",      # Right double quote "
+        "two-colons" => "::",     # Double colon
+        "two-semicolons" => ";;", # Double semicolon
+        "cpp" => "C++",           # C++
+    )
+end
+
+"""
     ParserState
 
 Internal state for the parser.
@@ -154,10 +194,10 @@ mutable struct ParserState
     include_stack::Vector{String}  # Prevents circular includes.
 end
 
-ParserState(text::String) = ParserState(split(text, '\n'), 1, Dict{String,String}(), pwd(), String[])
-ParserState(text::String, base_path::String) = ParserState(split(text, '\n'), 1, Dict{String,String}(), base_path, String[])
+ParserState(text::String) = ParserState(split(text, '\n'), 1, _builtin_attributes(), pwd(), String[])
+ParserState(text::String, base_path::String) = ParserState(split(text, '\n'), 1, _builtin_attributes(), base_path, String[])
 ParserState(text::String, base_path::String, include_stack::Vector{String}) =
-    ParserState(split(text, '\n'), 1, Dict{String,String}(), base_path, include_stack)
+    ParserState(split(text, '\n'), 1, _builtin_attributes(), base_path, include_stack)
 
 """
     peek_line(state::ParserState)
@@ -191,6 +231,46 @@ function skip_blank_lines!(state::ParserState)
     while (line = peek_line(state)) !== nothing && isempty(strip(line))
         next_line!(state)
     end
+end
+
+"""
+    try_skip_comment(state::ParserState) -> Bool
+
+Try to skip a comment (single-line or block).
+
+Single-line comments start with `//` (but not `////` which is a block delimiter).
+Block comments are delimited by `////` on their own lines.
+
+Returns true if a comment was skipped, false otherwise.
+"""
+function try_skip_comment(state::ParserState)
+    line = peek_line(state)
+    line === nothing && return false
+
+    stripped = strip(line)
+
+    # Block comment: //// ... ////
+    if stripped == "////"
+        next_line!(state)  # consume opening ////
+
+        # Skip until closing ////
+        while (line = peek_line(state)) !== nothing
+            if strip(line) == "////"
+                next_line!(state)  # consume closing ////
+                break
+            end
+            next_line!(state)
+        end
+        return true
+    end
+
+    # Single-line comment: // (but not //// which is block delimiter)
+    if startswith(stripped, "//") && !startswith(stripped, "////")
+        next_line!(state)
+        return true
+    end
+
+    return false
 end
 
 """
@@ -233,7 +313,10 @@ function _parse_asciidoc_state(state::ParserState)
         line = peek_line(state)
         line === nothing && break
 
-        if try_parse_attribute_definition(state)
+        # Skip comments first (they produce no output)
+        if try_skip_comment(state)
+            continue
+        elseif try_parse_attribute_definition(state)
             continue
         elseif (block = try_parse_header(state)) !== nothing
             push!(blocks, block)
@@ -250,6 +333,8 @@ function _parse_asciidoc_state(state::ParserState)
         elseif (block = try_parse_list(state)) !== nothing
             push!(blocks, block)
         elseif (block = try_parse_table(state)) !== nothing
+            push!(blocks, block)
+        elseif (block = try_parse_block_image(state)) !== nothing
             push!(blocks, block)
         elseif (block = try_parse_paragraph(state)) !== nothing
             push!(blocks, block)
@@ -298,6 +383,35 @@ function try_parse_attribute_definition(state::ParserState)
 end
 
 """
+    generate_header_id(text::AbstractString) -> String
+
+Generate an ID from header text following AsciiDoc conventions.
+
+- Converts to lowercase
+- Replaces spaces and non-alphanumeric chars with hyphens
+- Removes consecutive hyphens
+- Removes leading/trailing hyphens
+- Prefixes with underscore if starting with a digit
+"""
+function generate_header_id(text::AbstractString)
+    # Remove inline markup symbols for cleaner IDs
+    clean = replace(text, r"[*_`~^]" => "")
+    # Convert to lowercase
+    clean = lowercase(clean)
+    # Replace non-alphanumeric chars with hyphens
+    clean = replace(clean, r"[^a-z0-9]+" => "-")
+    # Remove leading/trailing hyphens
+    clean = strip(clean, '-')
+    # Handle empty result
+    isempty(clean) && return "_"
+    # Prefix with underscore if starting with digit
+    if isdigit(clean[1])
+        clean = "_" * clean
+    end
+    return clean
+end
+
+"""
     try_parse_header(state::ParserState) -> Union{Header,Nothing}
 
 Try to parse a header (= Title).
@@ -310,7 +424,12 @@ function try_parse_header(state::ParserState)
     if m !== nothing
         level = length(m.captures[1])
         text = m.captures[2]
-        id = m.captures[3] !== nothing ? String(m.captures[3]) : ""
+        # Use explicit ID if provided, otherwise auto-generate
+        id = if m.captures[3] !== nothing
+            String(m.captures[3])
+        else
+            generate_header_id(text)
+        end
         next_line!(state)
         return Header(level, parse_inline(text, state.attributes), id)
     end
@@ -319,9 +438,40 @@ function try_parse_header(state::ParserState)
 end
 
 """
+    _parse_callout_definitions(state::ParserState) -> Dict{Int,String}
+
+Parse callout definitions that follow a code block.
+Callouts have syntax: `<1> Explanation text`
+"""
+function _parse_callout_definitions(state::ParserState)
+    callouts = Dict{Int,String}()
+
+    while (line = peek_line(state)) !== nothing
+        m = match(r"^<(\d+)>\s+(.+)$", line)
+        if m !== nothing
+            num = Base.parse(Int, m.captures[1])
+            text = String(m.captures[2])
+            callouts[num] = text
+            next_line!(state)
+        else
+            # No more callout definitions
+            break
+        end
+    end
+
+    return callouts
+end
+
+"""
     try_parse_code_block(state::ParserState) -> Union{CodeBlock,Nothing}
 
 Try to parse a code block (----).
+
+Supports:
+- `----` (plain code block)
+- `[source,lang]` (code block with language)
+- `[source,lang,linenums]` or `[source,lang%linenums]` (with line numbers)
+- Callout markers `<1>` in code with definitions after the block
 """
 function try_parse_code_block(state::ParserState)
     line = peek_line(state)
@@ -341,12 +491,24 @@ function try_parse_code_block(state::ParserState)
             next_line!(state)
         end
 
-        return CodeBlock(join(code_lines, '\n'), language)
+        # Parse callout definitions after the code block
+        callouts = _parse_callout_definitions(state)
+
+        return CodeBlock(join(code_lines, '\n'), language, Dict{String,String}(), callouts)
     end
 
-    m = match(r"^\[source,\s*(\w+)\]$", line)
+    # Parse [source,...] with options
+    m = match(r"^\[source(?:,\s*(\w+))?((?:,\s*\w+|%\w+)*)\]$", line)
     if m !== nothing
-        language = String(m.captures[1])
+        language = m.captures[1] !== nothing ? String(m.captures[1]) : ""
+        options_str = m.captures[2] !== nothing ? String(m.captures[2]) : ""
+
+        # Parse attributes from options
+        attrs = Dict{String,String}()
+        if contains(options_str, "linenums") || contains(options_str, "%linenums")
+            attrs["linenums"] = "true"
+        end
+
         next_line!(state)
 
         line = peek_line(state)
@@ -363,7 +525,10 @@ function try_parse_code_block(state::ParserState)
                 next_line!(state)
             end
 
-            return CodeBlock(join(code_lines, '\n'), language)
+            # Parse callout definitions after the code block
+            callouts = _parse_callout_definitions(state)
+
+            return CodeBlock(join(code_lines, '\n'), language, attrs, callouts)
         end
     end
 
@@ -413,6 +578,7 @@ Supports two forms:
 2. Block form:
    ```
    [NOTE]
+   .Optional Title
    ====
    Content here
    ====
@@ -426,6 +592,17 @@ function try_parse_admonition(state::ParserState)
     if block_match !== nothing
         admon_type = lowercase(String(block_match.captures[1]))
         next_line!(state)
+
+        # Check for optional title (.Title syntax)
+        title = ""
+        next_line_content = peek_line(state)
+        if next_line_content !== nothing
+            title_match = match(r"^\.(.+)$", strip(next_line_content))
+            if title_match !== nothing
+                title = String(title_match.captures[1])
+                next_line!(state)
+            end
+        end
 
         delim_line = peek_line(state)
         if delim_line !== nothing && startswith(strip(delim_line), "====")
@@ -444,7 +621,7 @@ function try_parse_admonition(state::ParserState)
             content_text = join(content_lines, '\n')
             inner_doc = parse_asciidoc(content_text)
 
-            return Admonition(admon_type, inner_doc.blocks)
+            return Admonition(admon_type, inner_doc.blocks, title)
         else
             # No delimiter means single paragraph until blank line.
             content_lines = String[]
@@ -459,9 +636,9 @@ function try_parse_admonition(state::ParserState)
 
             if !isempty(content_lines)
                 content_text = join(content_lines, " ")
-                return Admonition(admon_type, [Paragraph(parse_inline(content_text, state.attributes))])
+                return Admonition(admon_type, BlockNode[Paragraph(parse_inline(content_text, state.attributes))], title)
             else
-                return Admonition(admon_type, BlockNode[])
+                return Admonition(admon_type, BlockNode[], title)
             end
         end
     end
@@ -493,7 +670,7 @@ function try_parse_admonition(state::ParserState)
         end
 
         if !isempty(strip(content))
-            return Admonition(admon_type, [Paragraph(parse_inline(content, state.attributes))])
+            return Admonition(admon_type, BlockNode[Paragraph(parse_inline(content, state.attributes))])
         else
             return Admonition(admon_type, BlockNode[])
         end
@@ -641,19 +818,43 @@ end
     try_parse_list(state::ParserState) -> Union{List,Nothing}
 
 Try to parse a list (unordered or ordered).
+
+Supports attribute blocks before lists like `[start=5]` for ordered lists.
 """
 function try_parse_list(state::ParserState)
     line = peek_line(state)
     line === nothing && return nothing
 
-    if match(r"^\s*[\*\-]\s+", line) !== nothing
+    list_attrs = Dict{String,String}()
+
+    # Check for attribute block before list - use lookahead
+    attr_match = match(r"^\[([^\]]+)\]\s*$", strip(line))
+    if attr_match !== nothing
+        # Lookahead: check if next line is a list item
+        if state.pos + 1 <= length(state.lines)
+            next_line_content = state.lines[state.pos + 1]
+            if match(r"^[\*\-\.]+\s+", next_line_content) !== nothing ||
+               match(r"^\d+\.\s+", next_line_content) !== nothing
+                # This is a list with attributes - consume the attribute line
+                attr_str = attr_match.captures[1]
+                _parse_block_attributes!(list_attrs, String(attr_str))
+                next_line!(state)
+                line = peek_line(state)
+            end
+        end
+    end
+
+    # Unordered list: *, **, ***, or -
+    if match(r"^\*+\s+", line) !== nothing || match(r"^-\s+", line) !== nothing
         return parse_unordered_list(state)
     end
 
-    if match(r"^\s*\.+\s+", line) !== nothing || match(r"^\s*\d+\.\s+", line) !== nothing
-        return parse_ordered_list(state)
+    # Ordered list: ., .., ..., or 1. 2. etc.
+    if match(r"^\.+\s+", line) !== nothing || match(r"^\d+\.\s+", line) !== nothing
+        return parse_ordered_list(state, 1, list_attrs)
     end
 
+    # Definition list: term::
     if match(r"^.+::\s*$", line) !== nothing
         return parse_definition_list(state)
     end
@@ -662,20 +863,51 @@ function try_parse_list(state::ParserState)
 end
 
 """
-    parse_unordered_list(state::ParserState) -> UnorderedList
+    parse_unordered_list(state::ParserState, level::Int=1) -> UnorderedList
 
-Parse an unordered list.
+Parse an unordered list with support for nesting.
+
+AsciiDoc nesting uses multiple markers:
+- `*` = level 1
+- `**` = level 2
+- `***` = level 3, etc.
 """
-function parse_unordered_list(state::ParserState)
+function parse_unordered_list(state::ParserState, level::Int=1)
     items = ListItem[]
 
     while (line = peek_line(state)) !== nothing
-        m = match(r"^\s*[\*\-]\s+(.*)$", line)
+        # Match unordered list item: capture marker and content
+        m = match(r"^(\*+|-)\s+(.*)$", line)
         if m === nothing
             break
         end
 
-        content = String(m.captures[1])
+        marker = m.captures[1]
+        item_level = marker == "-" ? 1 : length(marker)
+
+        # If this item is at a higher level (fewer *), we're done with this list
+        if item_level < level
+            break
+        end
+
+        # If this item is at a deeper level, it belongs to a nested list
+        if item_level > level
+            # Don't consume this line - let nested parsing handle it
+            # Attach nested list to the last item
+            if !isempty(items)
+                nested = parse_unordered_list(state, item_level)
+                # Replace last item with one that has the nested list
+                last_item = items[end]
+                items[end] = ListItem(last_item.content, nested)
+            else
+                # No parent item - skip this malformed nested item
+                next_line!(state)
+            end
+            continue
+        end
+
+        # This item is at our level - consume it
+        content = String(m.captures[2])
         next_line!(state)
 
         push!(items, ListItem(parse_inline(content, state.attributes)))
@@ -685,26 +917,63 @@ function parse_unordered_list(state::ParserState)
 end
 
 """
-    parse_ordered_list(state::ParserState) -> OrderedList
+    parse_ordered_list(state::ParserState, level::Int=1, attrs::Dict{String,String}=Dict{String,String}()) -> OrderedList
 
-Parse an ordered list.
+Parse an ordered list with support for nesting.
+
+AsciiDoc nesting uses multiple dots:
+- `.` = level 1
+- `..` = level 2
+- `...` = level 3, etc.
+
+Numbered format (1., 2., etc.) is always treated as level 1.
+
+Supports attributes like `[start=5]` for custom starting number.
 """
-function parse_ordered_list(state::ParserState)
+function parse_ordered_list(state::ParserState, level::Int=1, attrs::Dict{String,String}=Dict{String,String}())
     items = ListItem[]
 
     while (line = peek_line(state)) !== nothing
-        m = match(r"^\s*(?:\.+|\d+\.)\s+(.*)$", line)
+        # Match ordered list item: dots or number followed by content
+        m = match(r"^(\.+|\d+\.)\s+(.*)$", line)
         if m === nothing
             break
         end
 
-        content = String(m.captures[1])
+        marker = String(m.captures[1])
+        # Numbered markers (1., 2., etc.) are always level 1
+        # Dot markers have level = number of dots
+        item_level = isdigit(marker[1]) ? 1 : length(marker)
+
+        # If this item is at a higher level (fewer dots), we're done with this list
+        if item_level < level
+            break
+        end
+
+        # If this item is at a deeper level, it belongs to a nested list
+        if item_level > level
+            # Don't consume this line - let nested parsing handle it
+            # Attach nested list to the last item
+            if !isempty(items)
+                nested = parse_ordered_list(state, item_level)
+                # Replace last item with one that has the nested list
+                last_item = items[end]
+                items[end] = ListItem(last_item.content, nested)
+            else
+                # No parent item - skip this malformed nested item
+                next_line!(state)
+            end
+            continue
+        end
+
+        # This item is at our level - consume it
+        content = String(m.captures[2])
         next_line!(state)
 
         push!(items, ListItem(parse_inline(content, state.attributes)))
     end
 
-    return OrderedList(items)
+    return OrderedList(items, "arabic", attrs)
 end
 
 """
@@ -742,17 +1011,45 @@ end
 """
     try_parse_table(state::ParserState) -> Union{Table,Nothing}
 
-Try to parse a table (|===).
+Try to parse a table (|===), including preceding attribute block.
+
+Supports:
+- `[cols="1,1,1"]` - column specification
+- `[options="header"]` - table options
 """
 function try_parse_table(state::ParserState)
     line = peek_line(state)
     line === nothing && return nothing
 
-    if startswith(line, "|===")
+    table_attrs = Dict{String,String}()
+    has_attrs = false
+
+    # Check for attribute block before table - use lookahead
+    attr_match = match(r"^\[([^\]]+)\]\s*$", strip(line))
+    if attr_match !== nothing
+        # Lookahead: check if next line is table start (without consuming current line)
+        if state.pos + 1 <= length(state.lines)
+            next_line_content = state.lines[state.pos + 1]
+            if startswith(next_line_content, "|===")
+                # This is a table with attributes - consume the attribute line
+                attr_str = attr_match.captures[1]
+                _parse_block_attributes!(table_attrs, String(attr_str))
+                next_line!(state)
+                line = peek_line(state)
+                has_attrs = true
+            end
+        end
+    end
+
+    if line !== nothing && startswith(line, "|===")
         next_line!(state)
 
         rows = TableRow[]
         current_row_cells = TableCell[]
+
+        # Check if header option is set
+        has_header_option = haskey(table_attrs, "options") &&
+                           contains(table_attrs["options"], "header")
 
         while (line = peek_line(state)) !== nothing
             if startswith(line, "|===")
@@ -768,12 +1065,31 @@ function try_parse_table(state::ParserState)
                 for cell in cells
                     cell_content = strip(cell)
                     if !isempty(cell_content)
-                        push!(current_row_cells, TableCell(parse_inline(String(cell_content), state.attributes)))
+                        cell_attrs = Dict{String,String}()
+
+                        # Parse span syntax: 2+ (colspan), .2+ (rowspan), 2.3+ (both)
+                        span_match = match(r"^(\d+)?\.?(\d+)?\+\s*(.*)$", cell_content)
+                        if span_match !== nothing
+                            colspan = span_match.captures[1]
+                            rowspan = span_match.captures[2]
+                            cell_content = span_match.captures[3] !== nothing ? String(span_match.captures[3]) : ""
+
+                            if colspan !== nothing
+                                cell_attrs["colspan"] = String(colspan)
+                            end
+                            if rowspan !== nothing
+                                cell_attrs["rowspan"] = String(rowspan)
+                            end
+                        end
+
+                        push!(current_row_cells, TableCell(parse_inline(String(cell_content), state.attributes), cell_attrs))
                     end
                 end
 
                 if !isempty(current_row_cells)
-                    push!(rows, TableRow(current_row_cells))
+                    # First row is header if option is set
+                    is_header = isempty(rows) && has_header_option
+                    push!(rows, TableRow(current_row_cells, is_header))
                     current_row_cells = TableCell[]
                 end
             end
@@ -781,7 +1097,89 @@ function try_parse_table(state::ParserState)
             next_line!(state)
         end
 
-        return Table(rows)
+        return Table(rows, table_attrs)
+    end
+
+    return nothing
+end
+
+"""
+    _parse_block_attributes!(attrs::Dict{String,String}, attr_str::String)
+
+Parse block attributes like `cols="1,1,1", options="header"` into a dictionary.
+
+Also handles shorthand options like `%header`, `%footer`, `%autowidth`.
+"""
+function _parse_block_attributes!(attrs::Dict{String,String}, attr_str::String)
+    # Handle various formats:
+    # - cols="1,1,1"
+    # - options="header"
+    # - cols="1,1,1", options="header"
+    # - %header (shorthand for options="header")
+
+    # Handle shorthand %option syntax (e.g., %header, %footer, %autowidth)
+    for m in eachmatch(r"%(\w+)", attr_str)
+        option = String(m.captures[1])
+        # Store in options, appending if already exists
+        if haskey(attrs, "options")
+            attrs["options"] *= "," * option
+        else
+            attrs["options"] = option
+        end
+    end
+
+    # Simple key=value parsing (handles quoted values)
+    for m in eachmatch(r"(\w+)\s*=\s*\"([^\"]*)\"|(\w+)\s*=\s*([^\s,\]]+)", attr_str)
+        if m.captures[1] !== nothing
+            # Quoted value: key="value"
+            attrs[String(m.captures[1])] = String(m.captures[2])
+        elseif m.captures[3] !== nothing
+            # Unquoted value: key=value
+            attrs[String(m.captures[3])] = String(m.captures[4])
+        end
+    end
+end
+
+"""
+    try_parse_block_image(state::ParserState) -> Union{Paragraph,Nothing}
+
+Try to parse a block image (image::path[alt]).
+
+Block images use double colons and stand alone on a line.
+Returns a Paragraph containing just the Image node.
+"""
+function try_parse_block_image(state::ParserState)
+    line = peek_line(state)
+    line === nothing && return nothing
+
+    # Block image: image::path[alt,width,height]
+    m = match(r"^image::([^\[]+)\[([^\]]*)\]\s*$", strip(line))
+    if m !== nothing
+        url = String(m.captures[1])
+        attrs_str = String(m.captures[2])
+        next_line!(state)
+
+        # Parse attributes: first is alt text, then named attrs like width=, height=
+        attrs = Dict{String,String}()
+        alt_text = ""
+
+        if !isempty(attrs_str)
+            parts = split(attrs_str, ',')
+            for (i, part) in enumerate(parts)
+                part = strip(String(part))
+                if i == 1 && !contains(part, "=")
+                    # First part without = is alt text
+                    alt_text = part
+                elseif contains(part, "=")
+                    kv = split(part, '=', limit=2)
+                    if length(kv) == 2
+                        attrs[strip(String(kv[1]))] = strip(String(kv[2]))
+                    end
+                end
+            end
+        end
+
+        return Paragraph(InlineNode[Image(url, alt_text, attrs)])
     end
 
     return nothing
@@ -805,8 +1203,10 @@ function try_parse_paragraph(state::ParserState)
             break
         end
 
+        # Break on block boundaries
         if startswith(line, "=") || startswith(line, "----") ||
            startswith(line, "____") || startswith(line, "|===") ||
+           startswith(stripped, "//") ||  # Comments (single-line or block)
            match(r"^\s*[\*\-]\s+", line) !== nothing ||
            match(r"^\s*\.+\s+", line) !== nothing
             break
