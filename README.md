@@ -2,10 +2,8 @@
 
 A pure Julia parser for AsciiDoc documents that works with Documenter.jl.
 
-This is more verbose than Markdown and, because it gets translated to Markdown
-for use with Documenter.jl, none of the extra AsciiDoc features are available
-to Documenter.jl. Nevertheless, the parser has over 800 tests, so it may help someone.
-
+For use with Documenter.jl, this will translate AsciiDoc documents to Markdown.
+It's limited to what Markdown can express.
 
 ## Features
 
