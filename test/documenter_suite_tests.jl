@@ -198,6 +198,42 @@ end
         end
     end
 
+    @testset "Contributing Examples (Documentation)" begin
+        md_ast, adoc_ast = load_test_pair("contributing_examples")
+        result = compare_documents(md_ast, adoc_ast; name="contributing_examples")
+
+        print_comparison_report(result)
+
+        @testset "Structure" begin
+            # Both should have the same number of headings
+            @test result.md_manifest[:Heading] == result.adoc_manifest[:Heading]
+        end
+
+        @testset "Code Blocks" begin
+            # Documentation has many code examples
+            # Minor differences due to how formats handle unlabeled blocks
+            @test get(result.md_manifest, :CodeBlock, 0) >= 10
+            @test get(result.adoc_manifest, :CodeBlock, 0) >= 10
+        end
+
+        @testset "Lists" begin
+            # Both have bullet lists
+            @test get(result.md_manifest, :List, 0) >= 1
+            @test get(result.adoc_manifest, :List, 0) >= 1
+        end
+
+        @testset "Tables" begin
+            # Common issues table
+            @test get(result.md_manifest, :Table, 0) == get(result.adoc_manifest, :Table, 0)
+        end
+
+        @testset "Admonitions" begin
+            # tip and warning admonitions
+            @test get(result.md_manifest, :Admonition, 0) >= 1
+            @test get(result.adoc_manifest, :Admonition, 0) >= 1
+        end
+    end
+
 end
 
 # ============================================================================
