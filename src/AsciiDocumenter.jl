@@ -48,6 +48,38 @@ content = read("mydoc.adoc", String)
 doc = parse(content)
 html = convert(HTML, doc)
 ```
+
+## API Notes
+
+This package extends `Base.parse` and `Base.convert` to provide a natural Julia interface:
+- `parse(text)` - Parse AsciiDoc text into a Document AST
+- `convert(LaTeX, doc)` - Convert Document to LaTeX string
+- `convert(HTML, doc)` - Convert Document to HTML string
+
+## Known Limitations
+
+This parser intentionally implements a practical subset of full AsciiDoc:
+
+**Lists:**
+- Definition lists support single-line descriptions only
+- List nesting uses simplified rules (marker depth for unordered, dot count for ordered)
+
+**Attributes:**
+- Block attribute syntax requires strict ordering: positional arguments before key=value pairs
+- Limited set of attributes is recognized (primarily for code blocks, tables, and quotes)
+
+**Tables:**
+- First row is treated as header by default (can be overridden with explicit markers)
+- Cell spanning is supported via `2+` and `.2+` syntax
+- Complex table features (multi-line cells, nested blocks) are not supported
+
+**Inline Formatting:**
+- Formatting markers (*bold*, _italic_) must not start/end with whitespace
+- Nested formatting is supported but may have edge cases
+- Math rendering requires MathJax/KaTeX for HTML output
+
+These limitations are by design to maintain a simple, maintainable implementation
+while supporting the most common AsciiDoc use cases.
 """
 module AsciiDocumenter
 
@@ -70,9 +102,35 @@ const LaTeX = LaTeXBackend
 const HTML = HTMLBackend
 
 """
-    parse(text::String; base_path::String=pwd()) -> Document
+    Base.parse(::Type{Document}, text::AbstractString; base_path::AbstractString=pwd()) -> Document
 
 Parse AsciiDoc text into a Document AST.
+
+This extends `Base.parse` to support the `Document` type.
+
+# Arguments
+- `text`: The AsciiDoc source text
+- `base_path`: Directory for resolving include directives (default: current directory)
+
+# Example
+
+```julia
+doc = Base.parse(Document, \"\"\"
+= My Title
+
+This is a paragraph.
+\"\"\")
+```
+"""
+Base.parse(::Type{Document}, text::AbstractString; base_path::AbstractString=pwd()) =
+    parse_asciidoc(String(text); base_path=String(base_path))
+
+"""
+    parse(text::AbstractString; base_path::AbstractString=pwd()) -> Document
+
+Parse AsciiDoc text into a Document AST.
+
+This is a convenience wrapper around `Base.parse(Document, text)`.
 
 # Arguments
 - `text`: The AsciiDoc source text
@@ -91,8 +149,7 @@ This is a paragraph.
 doc = parse("include::other.adoc[]"; base_path="/path/to/docs")
 ```
 """
-Base.parse(::Type{Document}, text::String; base_path::String=pwd()) = parse_asciidoc(text; base_path=base_path)
-parse(text::String; base_path::String=pwd()) = Base.parse(Document, text; base_path=base_path)
+parse(text::AbstractString; base_path::AbstractString=pwd()) = Base.parse(Document, text; base_path=base_path)
 
 """
     convert(::Type{LaTeX}, doc::Document) -> String
@@ -127,7 +184,7 @@ Base.convert(::Type{HTML}, doc::Document; standalone::Bool=false) =
     to_html(doc, standalone=standalone)
 
 """
-    asciidoc_to_latex(text::String) -> String
+    asciidoc_to_latex(text::AbstractString) -> String
 
 Parse AsciiDoc text and convert directly to LaTeX.
 
@@ -141,13 +198,13 @@ Some *bold* text.
 \"\"\")
 ```
 """
-function asciidoc_to_latex(text::String)
+function asciidoc_to_latex(text::AbstractString)
     doc = parse(text)
     return convert(LaTeX, doc)
 end
 
 """
-    asciidoc_to_html(text::String; standalone=false) -> String
+    asciidoc_to_html(text::AbstractString; standalone=false) -> String
 
 Parse AsciiDoc text and convert directly to HTML.
 
@@ -161,7 +218,7 @@ Some *bold* text.
 \"\"\", standalone=true)
 ```
 """
-function asciidoc_to_html(text::String; standalone::Bool=false)
+function asciidoc_to_html(text::AbstractString; standalone::Bool=false)
     doc = parse(text)
     return convert(HTML, doc, standalone=standalone)
 end

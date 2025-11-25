@@ -117,13 +117,20 @@ function _parse_inline_match(m::RegexMatch)
 end
 
 """
-    parse_inline(text::AbstractString, attributes::Dict{String,String}=Dict{String,String}()) -> Vector{InlineNode}
+    parse_inline(text::AbstractString) -> Vector{InlineNode}
+
+Parse inline formatting within text using a Regex-based approach.
+"""
+parse_inline(text::AbstractString) = parse_inline(text, Dict{String,String}())
+
+"""
+    parse_inline(text::AbstractString, attributes::Dict{String,String}) -> Vector{InlineNode}
 
 Parse inline formatting within text using a Regex-based approach.
 
 Optionally substitutes attribute references ({name}) with their values.
 """
-function parse_inline(text::AbstractString, attributes::Dict{String,String}=Dict{String,String}())
+function parse_inline(text::AbstractString, attributes::Dict{String,String})
     processed_text = text
     if !isempty(attributes)
         processed_text = substitute_attributes(text, attributes)
@@ -321,6 +328,19 @@ function parse_asciidoc_file(filepath::String)
 end
 
 """
+    _parse_asciidoc_sub(text::String, parent_state::ParserState) -> Document
+
+Parse nested AsciiDoc content, inheriting attributes from parent state.
+Used for block quotes, admonitions, and other nested content.
+"""
+function _parse_asciidoc_sub(text::String, parent_state::ParserState)
+    sub_state = ParserState(text, parent_state.base_path, parent_state.include_stack)
+    # Inherit attributes from parent
+    sub_state.attributes = copy(parent_state.attributes)
+    return _parse_asciidoc_state(sub_state)
+end
+
+"""
     _parse_asciidoc_state(state::ParserState) -> Document
 
 Internal function to parse with a given state.
@@ -333,6 +353,9 @@ function _parse_asciidoc_state(state::ParserState)
         line = peek_line(state)
         line === nothing && break
 
+        # Track if we created a block in this iteration
+        block_created = false
+
         # Comments produce no output and must be skipped before attempting to parse other constructs.
         if try_skip_comment(state)
             continue
@@ -342,29 +365,44 @@ function _parse_asciidoc_state(state::ParserState)
             continue
         elseif (block = try_parse_header(state)) !== nothing
             push!(blocks, block)
+            block_created = true
         elseif (block = try_parse_code_block(state)) !== nothing
             push!(blocks, block)
+            block_created = true
         elseif (block = try_parse_passthrough_block(state)) !== nothing
             push!(blocks, block)
+            block_created = true
         elseif (block = try_parse_block_quote(state)) !== nothing
             push!(blocks, block)
+            block_created = true
         elseif (block = try_parse_markdown_quote(state)) !== nothing
             push!(blocks, block)
+            block_created = true
         elseif (block = try_parse_admonition(state)) !== nothing
             push!(blocks, block)
+            block_created = true
         elseif (included_blocks = try_parse_include(state)) !== nothing
             append!(blocks, included_blocks)
+            block_created = true
         elseif (block = try_parse_horizontal_rule(state)) !== nothing
             push!(blocks, block)
+            block_created = true
         elseif (block = try_parse_list(state)) !== nothing
             push!(blocks, block)
+            block_created = true
         elseif (block = try_parse_table(state)) !== nothing
             push!(blocks, block)
+            block_created = true
         elseif (block = try_parse_block_image(state)) !== nothing
             push!(blocks, block)
+            block_created = true
         elseif (block = try_parse_paragraph(state)) !== nothing
             push!(blocks, block)
+            block_created = true
         else
+            # No block was created - clear pending attributes to prevent leaking
+            # and advance to next line
+            _ = consume_pending_attributes!(state)
             next_line!(state)
         end
     end
@@ -424,85 +462,109 @@ function try_parse_block_attributes(state::ParserState)
     # Match [style] or [style,positional1,positional2,...] or [name=value,...]
     m = match(r"^\[([^\]]+)\]$", strip(line))
     if m !== nothing
-        content = m.captures[1]
+        content = String(m.captures[1])
 
-        # Parse the attribute content
-        # Format: style,pos1,pos2,... or name=value pairs or %option shortcuts
-        parts = split(content, ',')
+        # Skip admonition types - they're handled by try_parse_admonition
+        admon_types = ["NOTE", "TIP", "IMPORTANT", "WARNING", "CAUTION"]
+        first_word = strip(split(content, r"[,\[]")[1])
+        if uppercase(first_word) in admon_types
+            return false
+        end
 
-        if !isempty(parts)
-            # First part is typically the style/type
-            style = strip(parts[1])
+        # Split content into positional part and key=value part
+        # Assume strict ordering: positional args come before key=value pairs
+        positional_part = ""
+        keyval_part = ""
 
-            # Skip admonition types - they're handled by try_parse_admonition
-            admon_types = ["NOTE", "TIP", "IMPORTANT", "WARNING", "CAUTION"]
-            if uppercase(style) in admon_types
-                return false
+        if contains(content, "=")
+            # Find where the first key=value starts (matches \w+\s*=)
+            m_split = match(r"^(.*?)(\w+\s*=.*)$", content)
+            if m_split !== nothing
+                positional_part = String(m_split.captures[1])
+                keyval_part = String(m_split.captures[2])
+            else
+                # Shouldn't happen if contains(content, "=") is true, but fallback
+                keyval_part = content
             end
+        else
+            # No key=value pairs, all positional
+            positional_part = content
+        end
 
-            # Handle %option shorthand format (e.g., %header, %autowidth)
-            if startswith(style, "%")
-                option = style[2:end]
-                state.pending_block_attributes[option] = "true"
-                # Process remaining parts for more options
-                for part in parts[2:end]
-                    p = strip(part)
-                    if startswith(p, "%")
-                        state.pending_block_attributes[p[2:end]] = "true"
-                    end
-                end
-                next_line!(state)
-                return true
-            end
+        # Parse key=value pairs if present (handles quoted values)
+        if !isempty(keyval_part)
+            _parse_block_attributes!(state.pending_block_attributes, keyval_part)
+        end
 
-            # Check if it looks like a block style (not an ID like #myid)
-            if !startswith(style, "#") && !contains(style, "=")
-                state.pending_block_attributes["style"] = style
+        # Parse positional attributes if present
+        if !isempty(strip(positional_part))
+            # Remove trailing comma if present
+            positional_part = rstrip(positional_part, [',', ' '])
 
-                # Positional attributes depend on the style
-                if lowercase(style) == "quote" || lowercase(style) == "verse"
-                    if length(parts) >= 2
-                        state.pending_block_attributes["attribution"] = strip(parts[2])
+            if !isempty(positional_part)
+                parts = split(positional_part, ',')
+
+                if !isempty(parts)
+                    # First part is typically the style/type
+                    style = strip(parts[1])
+
+                    # Handle %option shorthand format (e.g., %header, %autowidth)
+                    if startswith(style, "%")
+                        option = style[2:end]
+                        state.pending_block_attributes[option] = "true"
+                        # Process remaining parts for more options
+                        for part in parts[2:end]
+                            p = strip(part)
+                            if startswith(p, "%")
+                                state.pending_block_attributes[p[2:end]] = "true"
+                            end
+                        end
+                        next_line!(state)
+                        return true
                     end
-                    if length(parts) >= 3
-                        state.pending_block_attributes["citetitle"] = strip(parts[3])
-                    end
-                elseif lowercase(style) == "source"
-                    if length(parts) >= 2
-                        lang_part = strip(parts[2])
-                        # Handle language%linenums format
-                        if contains(lang_part, "%")
-                            lang_parts = split(lang_part, "%")
-                            state.pending_block_attributes["language"] = strip(lang_parts[1])
-                            for opt in lang_parts[2:end]
-                                if strip(opt) == "linenums"
+
+                    if !startswith(style, "#")
+                        # It's a block style (not an ID like #myid)
+                        state.pending_block_attributes["style"] = style
+
+                        # Positional attributes depend on the style
+                        if lowercase(style) == "quote" || lowercase(style) == "verse"
+                            if length(parts) >= 2
+                                state.pending_block_attributes["attribution"] = strip(parts[2])
+                            end
+                            if length(parts) >= 3
+                                state.pending_block_attributes["citetitle"] = strip(parts[3])
+                            end
+                        elseif lowercase(style) == "source"
+                            if length(parts) >= 2
+                                lang_part = strip(parts[2])
+                                # Handle language%linenums format
+                                if contains(lang_part, "%")
+                                    lang_parts = split(lang_part, "%")
+                                    state.pending_block_attributes["language"] = strip(lang_parts[1])
+                                    for opt in lang_parts[2:end]
+                                        if strip(opt) == "linenums"
+                                            state.pending_block_attributes["linenums"] = "true"
+                                        end
+                                    end
+                                else
+                                    state.pending_block_attributes["language"] = lang_part
+                                end
+                            end
+                            # Check for linenums in additional parts
+                            for part in parts[3:end]
+                                if strip(part) == "linenums"
                                     state.pending_block_attributes["linenums"] = "true"
                                 end
                             end
-                        else
-                            state.pending_block_attributes["language"] = lang_part
-                        end
-                    end
-                    # Check for linenums in additional parts
-                    for part in parts[3:end]
-                        if strip(part) == "linenums"
-                            state.pending_block_attributes["linenums"] = "true"
                         end
                     end
                 end
-
-                # Also parse any name=value pairs
-                for part in parts[2:end]
-                    kv = split(part, '=', limit=2)
-                    if length(kv) == 2
-                        state.pending_block_attributes[strip(kv[1])] = strip(kv[2])
-                    end
-                end
-
-                next_line!(state)
-                return true
             end
         end
+
+        next_line!(state)
+        return true
     end
 
     return false
@@ -553,6 +615,9 @@ function try_parse_header(state::ParserState)
 
     m = match(r"^(=+)\s+(.+?)(?:\s*\[#([^\]]+)\])?$", line)
     if m !== nothing
+        # Consume any pending block attributes (headers don't use them, but consume to prevent leaking)
+        _ = consume_pending_attributes!(state)
+
         level = length(m.captures[1])
         text = m.captures[2]
         id = if m.captures[3] !== nothing
@@ -637,37 +702,6 @@ function try_parse_code_block(state::ParserState)
         return CodeBlock(join(code_lines, '\n'), language, attrs, callouts)
     end
 
-    m = match(r"^\[source(?:,\s*(@?\w+[\w\s]*))?((?:,\s*\w+|%\w+)*)\]$", line)
-    if m !== nothing
-        language = m.captures[1] !== nothing ? String(m.captures[1]) : ""
-        options_str = m.captures[2] !== nothing ? String(m.captures[2]) : ""
-
-        attrs = Dict{String,String}()
-        if contains(options_str, "linenums") || contains(options_str, "%linenums")
-            attrs["linenums"] = "true"
-        end
-
-        next_line!(state)
-
-        line = peek_line(state)
-        if line !== nothing && startswith(line, "----")
-            next_line!(state)
-
-            code_lines = String[]
-            while (line = peek_line(state)) !== nothing
-                if startswith(line, "----")
-                    next_line!(state)
-                    break
-                end
-                push!(code_lines, line)
-                next_line!(state)
-            end
-
-            callouts = _parse_callout_definitions(state)
-
-            return CodeBlock(join(code_lines, '\n'), language, attrs, callouts)
-        end
-    end
 
     return nothing
 end
@@ -682,29 +716,10 @@ function try_parse_passthrough_block(state::ParserState)
     line = peek_line(state)
     line === nothing && return nothing
 
-    attrs = Dict{String,String}()
-    
-    # Check for attributes/style
-    # Allow [stem] or [latexmath] or normal attributes
-    attr_match = match(r"^\[([^\]]+)\]\s*$", strip(line))
-    if attr_match !== nothing
-        # Lookahead for ++++
-        if state.pos + 1 <= length(state.lines)
-            next_line_content = state.lines[state.pos + 1]
-            if startswith(next_line_content, "++++")
-                attr_str = attr_match.captures[1]
-                if !contains(attr_str, "=") && !contains(attr_str, ",")
-                    attrs["style"] = String(attr_str)
-                else
-                    _parse_block_attributes!(attrs, String(attr_str))
-                end
-                next_line!(state)
-                line = peek_line(state)
-            end
-        end
-    end
-
     if startswith(line, "++++")
+        # Consume any pending block attributes
+        attrs = consume_pending_attributes!(state)
+
         next_line!(state)
 
         content_lines = String[]
@@ -755,7 +770,7 @@ function try_parse_block_quote(state::ParserState)
         end
 
         content_text = join(content_lines, '\n')
-        inner_doc = parse_asciidoc(content_text)
+        inner_doc = _parse_asciidoc_sub(content_text, state)
 
         # Build attribution string from attributes
         attribution = ""
@@ -831,7 +846,7 @@ function try_parse_markdown_quote(state::ParserState)
     end
 
     content_text = join(content_lines, '\n')
-    inner_doc = parse_asciidoc(content_text)
+    inner_doc = _parse_asciidoc_sub(content_text, state)
 
     return BlockQuote(inner_doc.blocks, attribution)
 end
@@ -860,6 +875,9 @@ function try_parse_admonition(state::ParserState)
 
     block_match = match(r"^\[(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]$", strip(line))
     if block_match !== nothing
+        # Consume any pending block attributes (admonitions don't use them)
+        _ = consume_pending_attributes!(state)
+
         admon_type = lowercase(String(block_match.captures[1]))
         next_line!(state)
 
@@ -888,7 +906,7 @@ function try_parse_admonition(state::ParserState)
             end
 
             content_text = join(content_lines, '\n')
-            inner_doc = parse_asciidoc(content_text)
+            inner_doc = _parse_asciidoc_sub(content_text, state)
 
             return Admonition(admon_type, inner_doc.blocks, title)
         else
@@ -913,6 +931,9 @@ function try_parse_admonition(state::ParserState)
 
     inline_match = match(r"^(NOTE|TIP|IMPORTANT|WARNING|CAUTION):\s*(.*)$", line)
     if inline_match !== nothing
+        # Consume any pending block attributes (admonitions don't use them)
+        _ = consume_pending_attributes!(state)
+
         admon_type = lowercase(String(inline_match.captures[1]))
         content = String(inline_match.captures[2])
         next_line!(state)
@@ -966,6 +987,9 @@ function try_parse_include(state::ParserState)
         return nothing
     end
 
+    # Consume any pending block attributes (includes don't use them)
+    _ = consume_pending_attributes!(state)
+
     include_path = String(m.captures[1])
     attributes_str = String(m.captures[2])
     next_line!(state)
@@ -997,6 +1021,8 @@ function try_parse_include(state::ParserState)
 
     new_include_stack = vcat(state.include_stack, [resolved_path])
     include_state = ParserState(content, dirname(resolved_path), new_include_stack)
+    # Inherit attributes from parent document
+    include_state.attributes = copy(state.attributes)
     included_doc = _parse_asciidoc_state(include_state)
 
     return included_doc.blocks
@@ -1075,6 +1101,8 @@ function try_parse_horizontal_rule(state::ParserState)
 
     stripped = strip(line)
     if stripped == "'''" || stripped == "---"
+        # Consume any pending block attributes (horizontal rules don't use them)
+        _ = consume_pending_attributes!(state)
         next_line!(state)
         return HorizontalRule()
     end
@@ -1093,37 +1121,24 @@ function try_parse_list(state::ParserState)
     line = peek_line(state)
     line === nothing && return nothing
 
-    list_attrs = Dict{String,String}()
-
-    # Check for attribute block before list - use lookahead
-    attr_match = match(r"^\[([^\]]+)\]\s*$", strip(line))
-    if attr_match !== nothing
-        # Lookahead: check if next line is a list item
-        if state.pos + 1 <= length(state.lines)
-            next_line_content = state.lines[state.pos + 1]
-            if match(r"^[\*\-\.]+\s+", next_line_content) !== nothing ||
-               match(r"^\d+\.\s+", next_line_content) !== nothing
-                # This is a list with attributes - consume the attribute line
-                attr_str = attr_match.captures[1]
-                _parse_block_attributes!(list_attrs, String(attr_str))
-                next_line!(state)
-                line = peek_line(state)
-            end
-        end
-    end
-
     # Unordered list: *, **, ***, or -
     if match(r"^\*+\s+", line) !== nothing || match(r"^-\s+", line) !== nothing
+        # Consume any pending block attributes
+        _ = consume_pending_attributes!(state)
         return parse_unordered_list(state)
     end
 
     # Ordered list: ., .., ..., or 1. 2. etc.
     if match(r"^\.+\s+", line) !== nothing || match(r"^\d+\.\s+", line) !== nothing
+        # Consume any pending block attributes
+        list_attrs = consume_pending_attributes!(state)
         return parse_ordered_list(state, 1, list_attrs)
     end
 
     # Definition list: term::
     if match(r"^.+::\s*$", line) !== nothing
+        # Consume any pending block attributes
+        _ = consume_pending_attributes!(state)
         return parse_definition_list(state)
     end
 
@@ -1289,34 +1304,9 @@ function try_parse_table(state::ParserState)
     line = peek_line(state)
     line === nothing && return nothing
 
-    table_attrs = Dict{String,String}()
-    has_attrs = false
-
-    # Check for pending block attributes first (from try_parse_block_attributes)
-    if !isempty(state.pending_block_attributes)
-        pending = consume_pending_attributes!(state)
-        merge!(table_attrs, pending)
-        has_attrs = true
-    end
-
-    # Check for attribute block before table - use lookahead
-    attr_match = match(r"^\[([^\]]+)\]\s*$", strip(line))
-    if attr_match !== nothing
-        # Lookahead: check if next line is table start (without consuming current line)
-        if state.pos + 1 <= length(state.lines)
-            next_line_content = state.lines[state.pos + 1]
-            if startswith(next_line_content, "|===")
-                # This is a table with attributes - consume the attribute line
-                attr_str = attr_match.captures[1]
-                _parse_block_attributes!(table_attrs, String(attr_str))
-                next_line!(state)
-                line = peek_line(state)
-                has_attrs = true
-            end
-        end
-    end
-
     if line !== nothing && startswith(line, "|===")
+        # Consume any pending block attributes
+        table_attrs = consume_pending_attributes!(state)
         next_line!(state)
 
         rows = TableRow[]
@@ -1431,6 +1421,8 @@ function try_parse_block_image(state::ParserState)
     # Block image: image::path[alt,width,height]
     m = match(r"^image::([^\[]+)\[([^\]]*)\]\s*$", strip(line))
     if m !== nothing
+        # Consume any pending block attributes (block images don't use them)
+        _ = consume_pending_attributes!(state)
         url = String(m.captures[1])
         attrs_str = String(m.captures[2])
         next_line!(state)
@@ -1493,6 +1485,8 @@ function try_parse_paragraph(state::ParserState)
     end
 
     if !isempty(lines)
+        # Consume any pending block attributes (paragraphs don't use them)
+        _ = consume_pending_attributes!(state)
         text = join(lines, " ")
         return Paragraph(parse_inline(text, state.attributes))
     end

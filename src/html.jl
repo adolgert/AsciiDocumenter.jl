@@ -310,7 +310,13 @@ end
 
 Convert a table to HTML, writing to IO.
 
-Supports `cols` attribute for column alignment (`<` left, `^` center, `>` right).
+Supports:
+- `cols` attribute for column alignment (`<` left, `^` center, `>` right)
+
+Table header handling:
+- If a row is explicitly marked as header (`is_header=true`), it renders as `<th>`
+- Otherwise, the first row is treated as a header by default
+- This provides sensible defaults while respecting explicit header markers from `[%header]` or `[options="header"]`
 """
 function to_html(io::IO, node::Table)
     if isempty(node.rows)
@@ -521,6 +527,44 @@ function to_html(io::IO, node::LineBreak)
 end
 
 """
+    to_html(io::IO, node::PassthroughBlock) -> Nothing
+
+Convert a passthrough block to HTML, writing to IO.
+
+If the block has a "stem" style attribute, wraps it as display math for MathJax/KaTeX.
+Otherwise, outputs raw content (useful for embedding raw HTML).
+"""
+function to_html(io::IO, node::PassthroughBlock)
+    style = get(node.attributes, "style", "")
+
+    if lowercase(style) == "stem"
+        # Wrap as display math for MathJax/KaTeX
+        print(io, "<div class=\"math\">\n\\[")
+        write(io, node.content)
+        print(io, "\\]\n</div>")
+    else
+        # Output raw content (for raw HTML blocks)
+        write(io, node.content)
+    end
+
+    return nothing
+end
+
+"""
+    to_html(io::IO, node::InlineMath) -> Nothing
+
+Convert inline math to HTML, writing to IO.
+
+Wraps content for MathJax/KaTeX using inline math delimiters.
+"""
+function to_html(io::IO, node::InlineMath)
+    print(io, "<span class=\"math\">\\(")
+    write(io, node.content)
+    print(io, "\\)</span>")
+    return nothing
+end
+
+"""
     to_html(doc::Document; standalone=false) -> String
 
 Convert an AsciiDoc document to HTML string.
@@ -562,7 +606,7 @@ function escape_html(text::AbstractString)
         "'" => "&#39;"
     ]
 
-    result = text
+    result = String(text)
     for (char, replacement) in replacements
         result = replace(result, char => replacement)
     end

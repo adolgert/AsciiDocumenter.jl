@@ -22,7 +22,7 @@ md_ast = to_markdownast(doc)
 """
 
 import MarkdownAST
-import MarkdownAST: Node, @ast
+import MarkdownAST: Node
 
 export to_markdownast, to_markdown
 
@@ -763,6 +763,22 @@ function render_md_element(io::IO, elem::MarkdownAST.Table, node::MarkdownAST.No
     end
 end
 
+function render_md_element(io::IO, elem::MarkdownAST.DisplayMath, node::MarkdownAST.Node, indent::Int)
+    println(io, "```math")
+    print(io, elem.math)
+    if !endswith(elem.math, "\n")
+        println(io)
+    end
+    println(io, "```")
+end
+
+function render_md_element(io::IO, elem::MarkdownAST.HTMLBlock, node::MarkdownAST.Node, indent::Int)
+    print(io, elem.html)
+    if !endswith(elem.html, "\n")
+        println(io)
+    end
+end
+
 function render_md_element(io::IO, elem, node::MarkdownAST.Node, indent::Int)
     for child in node.children
         render_md(io, child, indent)
@@ -819,6 +835,10 @@ end
 
 function render_md_inline_element(io::IO, elem::MarkdownAST.HTMLInline, node::MarkdownAST.Node)
     print(io, elem.html)
+end
+
+function render_md_inline_element(io::IO, elem::MarkdownAST.InlineMath, node::MarkdownAST.Node)
+    print(io, "\$", elem.math, "\$")
 end
 
 function render_md_inline_element(io::IO, elem, node::MarkdownAST.Node)

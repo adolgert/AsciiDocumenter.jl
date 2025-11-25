@@ -18,7 +18,7 @@ using Test
 using AsciiDocumenter
 import AsciiDocumenter: parse
 
-const SPEC_PATH = expanduser("~/dev/asciidoc-lang/docs/modules")
+const SPEC_PATH = "langspecs"
 
 """
     extract_tagged_examples(filepath::String) -> Dict{String, String}

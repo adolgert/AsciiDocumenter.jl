@@ -24,14 +24,24 @@ end
     to_latex(io::IO, node::Header) -> Nothing
 
 Convert a header to LaTeX section command, writing to IO.
+
+Header level mapping:
+- Level 0, 1 → `\\section`
+- Level 2 → `\\subsection`
+- Level 3 → `\\subsubsection`
+- Level 4 → `\\paragraph`
+- Level 5+ → `\\subparagraph`
+
+Note: `\\chapter` is not used as AsciiDoc documents typically don't have document-level chapters.
 """
 function to_latex(io::IO, node::Header)
-    commands = ["\\chapter", "\\section", "\\subsection",
+    commands = ["\\section", "\\subsection",
                 "\\subsubsection", "\\paragraph", "\\subparagraph"]
 
     if node.level == 0 || node.level == 1
         cmd = "\\section"
     else
+        # Level 2 maps to index 2 (subsection), level 3 to index 3, etc.
         cmd = commands[min(node.level, length(commands))]
     end
 
@@ -494,6 +504,44 @@ function to_latex(io::IO, node::LineBreak)
 end
 
 """
+    to_latex(io::IO, node::PassthroughBlock) -> Nothing
+
+Convert a passthrough block to LaTeX, writing to IO.
+
+If the block has a "stem" style attribute, wraps it as display math.
+Otherwise, outputs raw content (useful for embedding raw LaTeX).
+"""
+function to_latex(io::IO, node::PassthroughBlock)
+    style = get(node.attributes, "style", "")
+
+    if lowercase(style) == "stem"
+        # Wrap as display math
+        print(io, "\\[\n")
+        write(io, node.content)
+        print(io, "\n\\]")
+    else
+        # Output raw content (for raw LaTeX blocks)
+        write(io, node.content)
+    end
+
+    return nothing
+end
+
+"""
+    to_latex(io::IO, node::InlineMath) -> Nothing
+
+Convert inline math to LaTeX, writing to IO.
+
+Wraps content in inline math delimiters.
+"""
+function to_latex(io::IO, node::InlineMath)
+    print(io, "\$")
+    write(io, node.content)
+    print(io, "\$")
+    return nothing
+end
+
+"""
     to_latex(doc::Document) -> String
 
 Convert an AsciiDoc document to LaTeX string.
@@ -522,11 +570,11 @@ function to_latex(node::Union{BlockNode,InlineNode})
 end
 
 """
-    escape_latex(text::String) -> String
+    escape_latex(text::AbstractString) -> String
 
 Escape special LaTeX characters.
 """
-function escape_latex(text::String)
+function escape_latex(text::AbstractString)
     replacements = [
         "\\" => "\\textbackslash{}",
         "{" => "\\{",
@@ -540,7 +588,7 @@ function escape_latex(text::String)
         "^" => "\\textasciicircum{}"
     ]
 
-    result = text
+    result = String(text)
     # Backslash must be replaced first because replacing it after other characters would double-escape those replacements.
     result = replace(result, "\\" => "\\textbackslash{}")
 

@@ -39,6 +39,7 @@ makedocs(
         "Home" => "index.md",
         "Guide" => "guide.md",
         "Syntax" => "syntax.md",
+        "API Reference" => "reference.md",
     ],
     format = Documenter.HTML(
         prettyurls = get(ENV, "CI", nothing) == "true",
