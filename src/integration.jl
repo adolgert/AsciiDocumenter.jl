@@ -56,6 +56,7 @@ Convert an AsciiDoc block node to MarkdownAST using multiple dispatch.
 convert_block(node::Header) = convert_header(node)
 convert_block(node::Paragraph) = convert_paragraph(node)
 convert_block(node::CodeBlock) = convert_codeblock(node)
+convert_block(node::PassthroughBlock) = convert_passthrough_block(node)
 convert_block(node::BlockQuote) = convert_blockquote(node)
 convert_block(node::Admonition) = convert_admonition(node)
 convert_block(node::UnorderedList) = convert_unordered_list(node)
@@ -114,6 +115,22 @@ function convert_codeblock(node::CodeBlock)
     # MarkdownAST CodeBlock stores info (language) and code separately
     code_node = Node(MarkdownAST.CodeBlock(node.language, node.content))
     return code_node
+end
+
+"""
+    convert_passthrough_block(node::PassthroughBlock) -> MarkdownAST.Node
+
+Convert AsciiDoc PassthroughBlock to MarkdownAST DisplayMath or HTMLBlock.
+"""
+function convert_passthrough_block(node::PassthroughBlock)
+    style = get(node.attributes, "style", "")
+    # Handle math blocks
+    if style == "stem" || style == "latexmath" || style == "asciimath"
+        return Node(MarkdownAST.DisplayMath(node.content))
+    end
+    
+    # Default to HTML block for generic passthrough
+    return Node(MarkdownAST.HTMLBlock(node.content))
 end
 
 """
@@ -392,6 +409,7 @@ convert_inline(node::Superscript) = convert_superscript(node)
 convert_inline(node::Link) = convert_link(node)
 convert_inline(node::Image) = convert_image(node)
 convert_inline(node::CrossRef) = convert_crossref(node)
+convert_inline(node::InlineMath) = convert_inlinemath(node)
 convert_inline(node::LineBreak) = convert_linebreak(node)
 
 function convert_inline(node::InlineNode)
@@ -562,6 +580,15 @@ function convert_crossref(node::CrossRef)
     end
 
     return link
+end
+
+"""
+    convert_inlinemath(node::InlineMath) -> MarkdownAST.Node
+
+Convert AsciiDoc InlineMath to MarkdownAST InlineMath.
+"""
+function convert_inlinemath(node::InlineMath)
+    return Node(MarkdownAST.InlineMath(node.content))
 end
 
 """

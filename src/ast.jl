@@ -5,9 +5,9 @@ This module defines the type hierarchy for representing parsed AsciiDoc content.
 """
 
 export AsciiDocNode, Document, Header, Paragraph, List, ListItem,
-       CodeBlock, BlockQuote, Table, TableRow, TableCell,
+       CodeBlock, BlockQuote, PassthroughBlock, Table, TableRow, TableCell,
        InlineNode, Text, Bold, Italic, Monospace, Subscript, Superscript,
-       Link, Image, CrossRef, LineBreak, HorizontalRule,
+       Link, Image, CrossRef, InlineMath, LineBreak, HorizontalRule,
        OrderedList, UnorderedList, DefinitionList, DefinitionTerm, DefinitionDescription,
        Admonition
 
@@ -69,6 +69,18 @@ end
 
 CodeBlock(content::String, language::String="") = CodeBlock(content, language, Dict{String,String}(), Dict{Int,String}())
 CodeBlock(content::String, language::String, attributes::Dict{String,String}) = CodeBlock(content, language, attributes, Dict{Int,String}())
+
+"""
+    PassthroughBlock(content::String, attributes::Dict{String,String})
+
+A passthrough block (++++). Often used for raw HTML or math.
+"""
+struct PassthroughBlock <: BlockNode
+    content::String
+    attributes::Dict{String,String}
+end
+
+PassthroughBlock(content::String) = PassthroughBlock(content, Dict{String,String}())
 
 """
     BlockQuote(blocks::Vector{BlockNode}, attribution::String)
@@ -307,6 +319,15 @@ struct CrossRef <: InlineNode
 end
 
 CrossRef(target::String) = CrossRef(target, InlineNode[])
+
+"""
+    InlineMath(content::String)
+
+Inline math content (stem:[...]).
+"""
+struct InlineMath <: InlineNode
+    content::String
+end
 
 """
     LineBreak()

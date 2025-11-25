@@ -15,6 +15,12 @@ const INLINE_TOKEN_PATTERN = Regex(
     # Image: image:url[alt]
     (?<image>image:([^\[]+?)(?:\b\[([^\]]*?)\])?) | 
 
+    # Generic Link Macro: link:target[text]
+    (?<linkmacro>link:([^\[]+?)(?:\[([^\]]*?)\])) | 
+
+    # Inline Math: stem:[content]
+    (?<stem>stem:\[([^\]]*?)\]) | 
+
     # Link: https?://url[text] or https?://url
     (?<link>https?://[^\s\[\]]+?(?:\b\[([^\]]+?)\])?) | 
 
@@ -60,6 +66,23 @@ function _parse_inline_match(m::RegexMatch)
             url = String(sub_m.captures[1])
             alt = sub_m.captures[2]
             return Image(url, alt !== nothing ? String(alt) : "")
+        end
+    elseif m[:linkmacro] !== nothing
+        sub_m = match(r"^link:([^\[]+?)(?:\[([^\]]*?)\])$", m[:linkmacro])
+        if sub_m !== nothing
+            url = String(sub_m.captures[1])
+            text_cap = sub_m.captures[2]
+            if text_cap !== nothing && !isempty(text_cap)
+                return Link(url, parse_inline(String(text_cap)))
+            else
+                return Link(url)
+            end
+        end
+    elseif m[:stem] !== nothing
+        sub_m = match(r"^stem:\[([^\]]*?)\]$", m[:stem])
+        if sub_m !== nothing
+            content = String(sub_m.captures[1])
+            return InlineMath(content)
         end
     elseif m[:link] !== nothing
         sub_m = match(r"^(https?://[^\s\[\]]+?)(?:\b\[([^\]]+?)\])?$", m[:link])
@@ -322,6 +345,8 @@ function _parse_asciidoc_state(state::ParserState)
             push!(blocks, block)
         elseif (block = try_parse_code_block(state)) !== nothing
             push!(blocks, block)
+        elseif (block = try_parse_passthrough_block(state)) !== nothing
+            push!(blocks, block)
         elseif (block = try_parse_block_quote(state)) !== nothing
             push!(blocks, block)
         elseif (block = try_parse_admonition(state)) !== nothing
@@ -498,7 +523,8 @@ function try_parse_code_block(state::ParserState)
     end
 
     # Parse [source,...] with options
-    m = match(r"^\[source(?:,\s*(\w+))?((?:,\s*\w+|%\w+)*)\]$", line)
+    # Allow @-prefixed languages for Documenter.jl blocks (@docs, @example, @repl, etc.)
+    m = match(r"^\[source(?:,\s*(@?\w+[\w\s]*))?((?:,\s*\w+|%\w+)*)\]$", line)
     if m !== nothing
         language = m.captures[1] !== nothing ? String(m.captures[1]) : ""
         options_str = m.captures[2] !== nothing ? String(m.captures[2]) : ""
@@ -530,6 +556,58 @@ function try_parse_code_block(state::ParserState)
 
             return CodeBlock(join(code_lines, '\n'), language, attrs, callouts)
         end
+    end
+
+    return nothing
+end
+
+"""
+    try_parse_passthrough_block(state::ParserState) -> Union{PassthroughBlock,Nothing}
+
+Try to parse a passthrough block (++++).
+Supports attributes like `[stem]` or `[latexmath]` preceding the block.
+"""
+function try_parse_passthrough_block(state::ParserState)
+    line = peek_line(state)
+    line === nothing && return nothing
+
+    attrs = Dict{String,String}()
+    
+    # Check for attributes/style
+    # Allow [stem] or [latexmath] or normal attributes
+    attr_match = match(r"^\[([^\]]+)\]\s*$", strip(line))
+    if attr_match !== nothing
+        # Lookahead for ++++
+        if state.pos + 1 <= length(state.lines)
+            next_line_content = state.lines[state.pos + 1]
+            if startswith(next_line_content, "++++")
+                attr_str = attr_match.captures[1]
+                # If simple style like [stem], treat as style attribute
+                if !contains(attr_str, "=") && !contains(attr_str, ",")
+                    attrs["style"] = String(attr_str)
+                else
+                    _parse_block_attributes!(attrs, String(attr_str))
+                end
+                next_line!(state) # consume attributes
+                line = peek_line(state)
+            end
+        end
+    end
+
+    if startswith(line, "++++")
+        next_line!(state)
+
+        content_lines = String[]
+        while (line = peek_line(state)) !== nothing
+            if startswith(line, "++++")
+                next_line!(state)
+                break
+            end
+            push!(content_lines, line)
+            next_line!(state)
+        end
+
+        return PassthroughBlock(join(content_lines, '\n'), attrs)
     end
 
     return nothing

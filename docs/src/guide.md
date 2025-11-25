@@ -1,68 +1,87 @@
 # Guide
 
-This guide assumes familiarity with [Documenter.jl](https://documenter.juliadocs.org/). It covers how to write documentation in AsciiDoc instead of Markdown.
+This guide assumes familiarity with [Documenter.jl](https://documenter.juliadocs.org/). It covers how to write documentation in AsciiDoc.
 
-## Setup
+## Conversion Workflow
 
-Add to your `docs/Project.toml`:
+Documenter.jl works on Markdown files. To use AsciiDoc, you must convert your `.adoc` files to `.md` *before* `makedocs` runs.
 
-```toml
-[deps]
-Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
-AsciiDoc = "..."
-```
-
-## Converting AsciiDoc to Markdown
-
-In your `docs/make.jl`, convert `.adoc` files before calling `makedocs`:
+### In `docs/make.jl`
 
 ```julia
 using Documenter
 using AsciiDoc
 using MyPackage
 
-# Convert AsciiDoc files to Markdown
-for file in readdir("docs/src"; join=true)
-    if endswith(file, ".adoc")
-        adoc_content = read(file, String)
-        md_content = AsciiDoc.to_markdown(AsciiDoc.parse(adoc_content))
-        md_file = replace(file, ".adoc" => ".md")
-        write(md_file, md_content)
+# 1. Convert AsciiDoc -> Markdown
+for (root, dirs, files) in walkdir(joinpath(@__DIR__, "src"))
+    for file in files
+        if endswith(file, ".adoc")
+            path = joinpath(root, file)
+            println("Converting $path...")
+            
+            # Read AsciiDoc
+            adoc = read(path, String)
+            
+            # Parse and Convert
+            doc = AsciiDoc.parse(adoc)
+            md = AsciiDoc.to_markdown(doc)
+            
+            # Write Markdown file next to source
+            write(replace(path, ".adoc" => ".md"), md)
+        end
     end
 end
 
+# 2. Run makedocs with .md files
 makedocs(
     sitename = "MyPackage.jl",
     modules = [MyPackage],
     pages = [
         "Home" => "index.md",
-        "Guide" => "guide.md",
+        # Note: Refer to the generated .md files, not .adoc
+        "Guide" => "guide.md", 
+        "API" => "api.md"
     ]
 )
 ```
 
-Alternatively, convert files recursively:
+## Writing for Documenter
 
-```julia
-function convert_adoc_files(dir)
-    for (root, dirs, files) in walkdir(dir)
-        for file in files
-            if endswith(file, ".adoc")
-                path = joinpath(root, file)
-                content = read(path, String)
-                md = AsciiDoc.to_markdown(AsciiDoc.parse(content))
-                write(replace(path, ".adoc" => ".md"), md)
-            end
-        end
-    end
-end
+AsciiDoc.jl is designed to act as a transparent bridge. You write AsciiDoc, and it generates the Markdown signals that Documenter expects.
 
-convert_adoc_files("docs/src")
+### Cross-References
+Do not use standard `<<id>>` internal links for cross-page references. Use the `link:` macro with `@ref`.
+
+*   **Correct:** `link:@ref[See the Guide]`
+*   **Correct:** `link:@ref#section-id[See Section]`
+*   **Incorrect:** `<<section-id, See Section>>` (Only works on the same page)
+
+### Math
+Use `stem` blocks.
+
+*   **Inline:** `stem:[x^2]`
+*   **Display:**
+    ```asciidoc
+    [stem]
+    ++++
+    x^2
+    ++++
+    ```
+
+### Docstrings
+Use `[source,@docs]` blocks.
+
+```asciidoc
+[source,@docs]
+----
+MyPackage.my_function
+----
 ```
 
 ## File Structure
 
-Standard Documenter structure works with AsciiDoc files:
+Your `docs/src` folder can look exactly like a standard Documenter project, just with `.adoc` files.
 
 ```
 docs/
@@ -74,38 +93,4 @@ docs/
     └── api.adoc
 ```
 
-## Building
-
-```bash
-julia --project=docs docs/make.jl
-```
-
-The converted Markdown files are generated alongside the AsciiDoc sources before Documenter processes them.
-
-## Docstrings
-
-AsciiDoc does not have a direct equivalent to Documenter's `@docs` blocks. Keep docstring inclusion in separate Markdown files, or write a custom preprocessor that inserts `@docs` blocks during conversion.
-
-For a hybrid approach, use Markdown for API reference pages (with `@docs` blocks) and AsciiDoc for narrative documentation.
-
-## Cross-References
-
-Documenter's `@ref` syntax is Markdown-specific. For cross-references:
-
-**Option 1**: Use standard AsciiDoc links and let them convert to Markdown links:
-
-```asciidoc
-See the <<installation>> section.
-```
-
-**Option 2**: Use raw Markdown in your AsciiDoc where needed:
-
-```asciidoc
-++++
-See [`MyFunction`](@ref) for details.
-++++
-```
-
-## Navigation
-
-The `pages` argument in `makedocs` controls navigation. Ensure your converted `.md` filenames match the `pages` configuration.
+The conversion script will generate sibling `.md` files (e.g., `index.md`) which Documenter will then process.

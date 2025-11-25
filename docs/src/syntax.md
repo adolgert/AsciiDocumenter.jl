@@ -1,358 +1,184 @@
-# Syntax
+# AsciiDoc Syntax for Documenter.jl
 
-AsciiDoc equivalents for Documenter Markdown syntax.
+This guide covers how to write AsciiDoc that compiles correctly to Documenter.jl's expected format.
 
-## Headings
+## Documenter Features
 
-```markdown
-# Level 1
-## Level 2
-### Level 3
-#### Level 4
-```
+### Cross-References (`@ref`)
+
+Use the `link:` macro to create Documenter-style cross-references. This macro allows any target string, enabling `@ref` syntax.
 
 ```asciidoc
-= Level 1
-== Level 2
-=== Level 3
-==== Level 4
+// Link to a docstring
+See the link:@ref[MyFunction] documentation.
+
+// Link to a section in another file
+See link:@ref[Section Name] for details.
+
+// Explicit @ref syntax
+See link:@ref#my-id[Custom Link Text].
+
+// Relative links to other files
+See the link:../guide.md[User Guide].
 ```
 
-## Paragraphs
+### Math
 
-Paragraphs are separated by blank lines in both formats.
+AsciiDoc.jl supports `stem` (Science, Technology, Engineering, Math) blocks, which map directly to Documenter's math support.
 
-## Inline Formatting
-
-| Markdown | AsciiDoc | Result |
-|----------|----------|--------|
-| `**bold**` | `*bold*` | **bold** |
-| `*italic*` | `_italic_` | *italic* |
-| `` `code` `` | `` `code` `` | `code` |
-| `~~strike~~` | `[line-through]#strike#` | ~~strike~~ |
-
-## Links
-
-```markdown
-[Link text](https://example.com)
-[Link with title](https://example.com "Title")
-```
+**Inline Math:**
 
 ```asciidoc
-https://example.com[Link text]
-https://example.com[Link with title, title="Title"]
+The formula is stem:[E = mc^2].
 ```
 
-## Images
-
-```markdown
-![Alt text](image.png)
-![Alt text](image.png "Title")
-```
+**Display Math:**
 
 ```asciidoc
-image::image.png[Alt text]
-image::image.png[Alt text, title="Title"]
+[stem]
+++++
+\int_0^\infty x^2 dx
+++++
 ```
 
-Inline images:
+### Documenter Blocks (@docs, @example, etc.)
+
+To use Documenter's "magic" blocks like `@docs`, `@example`, or `@repl`, use a source block with the language prefixed by `@`.
+
+**@docs (Docstrings):**
 
 ```asciidoc
-image:icon.png[Icon]
+[source,@docs]
+----
+MyPackage.my_function
+----
 ```
 
-## Code Blocks
+**@example (Executed Code):**
 
-````markdown
-```julia
-function foo()
-    return 42
-end
+```asciidoc
+[source,@example]
+----
+x = 10
+y = 20
+println(x + y)
+----
 ```
-````
+
+**@repl (REPL Simulation):**
+
+```asciidoc
+[source,@repl]
+----
+julia> 1 + 1
+2
+----
+```
+
+## Standard AsciiDoc Syntax
+
+### Headings
+
+```asciidoc
+= Document Title (H1)
+== Section Level 2
+=== Section Level 3
+==== Section Level 4
+```
+
+### Text Formatting
+
+```asciidoc
+*Bold text*
+_Italic text_
+`Monospace/Code`
+#Subscript# (Coming soon)
+^Superscript^ (Coming soon)
+```
+
+### Lists
+
+**Unordered:**
+
+```asciidoc
+* Item 1
+* Item 2
+** Nested Item
+```
+
+**Ordered:**
+
+```asciidoc
+. Step 1
+. Step 2
+.. Nested Step
+```
+
+**Definition Lists:**
+
+```asciidoc
+Term 1:: Definition text
+Term 2:: 
++
+Multi-paragraph definition.
+```
+
+### Code Blocks
+
+Standard code blocks map to Markdown code fences.
 
 ```asciidoc
 [source,julia]
 ----
 function foo()
-    return 42
+    return "bar"
 end
 ----
 ```
 
-Without language:
+### Admonitions
 
-````markdown
-```
-plain text
-```
-````
-
-```asciidoc
-----
-plain text
-----
-```
-
-## Lists
-
-### Unordered
-
-```markdown
-- Item 1
-- Item 2
-  - Nested item
-```
-
-```asciidoc
-* Item 1
-* Item 2
-** Nested item
-```
-
-### Ordered
-
-```markdown
-1. First
-2. Second
-3. Third
-```
-
-```asciidoc
-. First
-. Second
-. Third
-```
-
-### Nested Mixed
-
-```asciidoc
-. First ordered
-* Unordered under first
-* Another unordered
-. Second ordered
-```
-
-## Block Quotes
-
-```markdown
-> This is a quote.
-> It continues here.
-```
-
-```asciidoc
-____
-This is a quote.
-It continues here.
-____
-```
-
-## Admonitions
-
-```markdown
-!!! note "Title"
-    Content here.
-
-!!! warning
-    Warning content.
-
-!!! tip "Pro Tip"
-    Tip content.
-
-!!! danger "Danger"
-    Danger content.
-```
+Maps standard AsciiDoc admonitions to Documenter's `!!!` blocks.
 
 ```asciidoc
 [NOTE]
-.Title
+.Optional Title
 ====
-Content here.
-====
-
-[WARNING]
-====
-Warning content.
+This is a note block.
 ====
 
-[TIP]
-.Pro Tip
-====
-Tip content.
-====
-
-[CAUTION]
-.Danger
-====
-Danger content.
-====
+WARNING: This is a single-line warning.
 ```
 
-Inline admonitions (single paragraph):
+Supported types: `NOTE`, `TIP`, `WARNING`, `IMPORTANT`, `CAUTION`.
 
-```asciidoc
-NOTE: This is a note.
+### Tables
 
-WARNING: This is a warning.
-
-TIP: This is a tip.
-```
-
-Supported types: `NOTE`, `TIP`, `WARNING`, `CAUTION`, `IMPORTANT`
-
-## Tables
-
-```markdown
-| Header 1 | Header 2 | Header 3 |
-|----------|----------|----------|
-| Cell 1   | Cell 2   | Cell 3   |
-| Cell 4   | Cell 5   | Cell 6   |
-```
-
-```asciidoc
-[cols="1,1,1"]
-|===
-| Header 1 | Header 2 | Header 3
-
-| Cell 1
-| Cell 2
-| Cell 3
-
-| Cell 4
-| Cell 5
-| Cell 6
-|===
-```
-
-Simpler table syntax:
+Standard AsciiDoc tables are supported.
 
 ```asciidoc
 |===
 | Header 1 | Header 2
 
-| Cell 1 | Cell 2
-| Cell 3 | Cell 4
+| Cell A1  | Cell A2
+| Cell B1  | Cell B2
 |===
 ```
 
-## Horizontal Rules
-
-```markdown
----
-```
+### Images
 
 ```asciidoc
-'''
+image::path/to/image.png[Alt Text]
 ```
 
-## Math
+### Raw Passthrough
 
-Documenter uses double backticks for inline math and `math` code blocks for display math.
-
-```markdown
-Inline: ``x^2 + y^2``
-
-Display:
-```math
-\int_0^1 x^2 dx
-```
-```
-
-AsciiDoc uses `stem` for math:
-
-```asciidoc
-Inline: stem:[x^2 + y^2]
-
-Display:
-[stem]
-++++
-\int_0^1 x^2 dx
-++++
-```
-
-Alternatively, use code blocks with `math` language (converts to Documenter's format):
-
-```asciidoc
-[source,math]
-----
-\int_0^1 x^2 dx
-----
-```
-
-## Include Directive
-
-Include content from other files:
-
-```asciidoc
-\include::other_file.adoc[]
-```
-
-With line selection:
-
-```asciidoc
-\include::code.jl[lines=5..10]
-```
-
-## Document Attributes
-
-Define variables at the top of the document:
-
-```asciidoc
-:version: 1.0.0
-:author: Jane Doe
-
-Version {version} by {author}.
-```
-
-## Raw Passthrough
-
-Insert raw Markdown or HTML:
+To inject raw HTML or content that should bypass processing:
 
 ```asciidoc
 ++++
-<!-- Raw HTML here -->
-<div class="custom">Content</div>
+<div class="custom-alert">
+  Raw HTML content
+</div>
 ++++
 ```
-
-## Comments
-
-```asciidoc
-// This is a comment (not rendered)
-```
-
-## Escaping
-
-Escape AsciiDoc syntax with backslash:
-
-```asciidoc
-\*not bold\*
-\`not code\`
-```
-
-## Documenter-Specific Blocks
-
-These Documenter features have no direct AsciiDoc equivalent. Use passthrough blocks:
-
-```asciidoc
-++++
-```@docs
-MyModule.myfunction
-```
-++++
-
-++++
-```@example
-x = 1 + 1
-```
-++++
-
-++++
-```@repl
-julia> 1 + 1
-2
-```
-++++
-```
-
-Or keep API reference pages in Markdown and use AsciiDoc for narrative content.
