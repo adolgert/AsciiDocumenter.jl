@@ -6,11 +6,14 @@ import AsciiDocumenter: parse, convert, LaTeX, HTML
 # Run specification compliance tests
 include("spec_tests.jl")
 
-# Run IO streaming tests (PR2)
+# Run IO streaming tests
 include("io_streaming_tests.jl")
 
-# Run MarkdownAST integration tests (PR3)
+# Run MarkdownAST integration tests
 include("markdownast_tests.jl")
+
+# Run tests against official AsciiDoc Language spec examples (requires ~/dev/asciidoc-lang)
+include("spec_examples.jl")
 
 @testset "Parser and Backend Integration" begin
     @testset "Headers" begin
