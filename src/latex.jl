@@ -4,12 +4,7 @@ LaTeX backend for AsciiDoc.
 Converts AsciiDoc AST to LaTeX output using IO streaming for memory efficiency.
 """
 
-# Exported functions for LaTeX backend
 export to_latex
-
-# ============================================================================
-# Core IO-based rendering methods
-# ============================================================================
 
 """
     to_latex(io::IO, doc::Document) -> Nothing
@@ -17,10 +12,6 @@ export to_latex
 Convert an AsciiDoc document to LaTeX, writing to the provided IO stream.
 """
 function to_latex(io::IO, doc::Document)
-    # Write preamble if needed
-    # (User can wrap this in their own document class)
-
-    # Convert blocks
     for block in doc.blocks
         to_latex(io, block)
         write(io, "\n\n")
@@ -35,11 +26,9 @@ end
 Convert a header to LaTeX section command, writing to IO.
 """
 function to_latex(io::IO, node::Header)
-    # Map AsciiDoc levels to LaTeX commands
     commands = ["\\chapter", "\\section", "\\subsection",
                 "\\subsubsection", "\\paragraph", "\\subparagraph"]
 
-    # Level 0 (= Title) is typically the document title
     if node.level == 0 || node.level == 1
         cmd = "\\section"
     else
@@ -52,7 +41,6 @@ function to_latex(io::IO, node::Header)
     end
     print(io, "}")
 
-    # Add label if there's an ID
     if !isempty(node.id)
         print(io, "\n\\label{", escape_latex(node.id), "}")
     end
@@ -79,13 +67,10 @@ Convert a code block to LaTeX using listings or verbatim, writing to IO.
 """
 function to_latex(io::IO, node::CodeBlock)
     if isempty(node.language)
-        # Use verbatim environment
         print(io, "\\begin{verbatim}\n")
         write(io, node.content)
         print(io, "\n\\end{verbatim}")
     else
-        # Use listings environment with language
-        # Note: requires \usepackage{listings}
         print(io, "\\begin{lstlisting}[language=", node.language, "]\n")
         write(io, node.content)
         print(io, "\n\\end{lstlisting}")
@@ -123,8 +108,6 @@ Uses a simple boxed format. For better styling, consider using
 packages like tcolorbox in your document preamble.
 """
 function to_latex(io::IO, node::Admonition)
-    # Use a simple framed paragraph approach
-    # Note: requires no special packages, but tcolorbox would be better for production
     title = uppercase(node.type[1:1]) * node.type[2:end]
 
     print(io, "\\begin{quote}\n")
@@ -227,7 +210,6 @@ function to_latex(io::IO, node::Table)
         return nothing
     end
 
-    # Determine column count from first row
     ncols = length(node.rows[1].cells)
     col_spec = join(fill("l", ncols), " ")
 
@@ -273,10 +255,6 @@ function to_latex(io::IO, node::HorizontalRule)
     print(io, "\\noindent\\rule{\\textwidth}{0.4pt}")
     return nothing
 end
-
-# ============================================================================
-# Inline nodes
-# ============================================================================
 
 """
     to_latex(io::IO, node::Text) -> Nothing
@@ -382,8 +360,6 @@ end
 Convert an image to LaTeX, writing to IO.
 """
 function to_latex(io::IO, node::Image)
-    # Basic image inclusion
-    # Note: requires \usepackage{graphicx}
     print(io, "\\begin{figure}[h]\n")
     print(io, "\\centering\n")
     print(io, "\\includegraphics{", escape_latex(node.url), "}")
@@ -424,10 +400,6 @@ function to_latex(io::IO, node::LineBreak)
     return nothing
 end
 
-# ============================================================================
-# Convenience wrappers (backward compatibility)
-# ============================================================================
-
 """
     to_latex(doc::Document) -> String
 
@@ -456,10 +428,6 @@ function to_latex(node::Union{BlockNode,InlineNode})
     return String(take!(io))
 end
 
-# ============================================================================
-# Utility functions
-# ============================================================================
-
 """
     escape_latex(text::String) -> String
 
@@ -480,7 +448,7 @@ function escape_latex(text::String)
     ]
 
     result = text
-    # Do backslash first to avoid double-escaping
+    # Backslash must be replaced first to avoid double-escaping.
     result = replace(result, "\\" => "\\textbackslash{}")
 
     for (char, replacement) in replacements[2:end]
