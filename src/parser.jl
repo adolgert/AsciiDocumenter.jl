@@ -142,6 +142,46 @@ function substitute_attributes(text::AbstractString, attributes::Dict{String,Str
 end
 
 """
+    _builtin_attributes() -> Dict{String,String}
+
+Return a dictionary of built-in AsciiDoc attributes.
+These are automatically available in all documents.
+"""
+function _builtin_attributes()
+    Dict{String,String}(
+        # Special characters
+        "nbsp" => "\u00A0",      # Non-breaking space
+        "sp" => " ",              # Space
+        "empty" => "",            # Empty string
+        "blank" => "",            # Blank (same as empty)
+        "amp" => "&",             # Ampersand
+        "lt" => "<",              # Less than
+        "gt" => ">",              # Greater than
+        "quot" => "\"",           # Quotation mark
+        "apos" => "'",            # Apostrophe
+        "brvbar" => "¦",          # Broken vertical bar
+        "vbar" => "|",            # Vertical bar
+        "zwsp" => "\u200B",       # Zero-width space
+        "wj" => "\u2060",         # Word joiner
+        "deg" => "°",             # Degree symbol
+        "plus" => "+",            # Plus sign
+        "caret" => "^",           # Caret
+        "tilde" => "~",           # Tilde
+        "backslash" => "\\",      # Backslash
+        "backtick" => "`",        # Backtick
+        "startsb" => "[",         # Left square bracket
+        "endsb" => "]",           # Right square bracket
+        "lsquo" => "\u2018",      # Left single quote '
+        "rsquo" => "\u2019",      # Right single quote '
+        "ldquo" => "\u201C",      # Left double quote "
+        "rdquo" => "\u201D",      # Right double quote "
+        "two-colons" => "::",     # Double colon
+        "two-semicolons" => ";;", # Double semicolon
+        "cpp" => "C++",           # C++
+    )
+end
+
+"""
     ParserState
 
 Internal state for the parser.
@@ -154,10 +194,10 @@ mutable struct ParserState
     include_stack::Vector{String}  # Prevents circular includes.
 end
 
-ParserState(text::String) = ParserState(split(text, '\n'), 1, Dict{String,String}(), pwd(), String[])
-ParserState(text::String, base_path::String) = ParserState(split(text, '\n'), 1, Dict{String,String}(), base_path, String[])
+ParserState(text::String) = ParserState(split(text, '\n'), 1, _builtin_attributes(), pwd(), String[])
+ParserState(text::String, base_path::String) = ParserState(split(text, '\n'), 1, _builtin_attributes(), base_path, String[])
 ParserState(text::String, base_path::String, include_stack::Vector{String}) =
-    ParserState(split(text, '\n'), 1, Dict{String,String}(), base_path, include_stack)
+    ParserState(split(text, '\n'), 1, _builtin_attributes(), base_path, include_stack)
 
 """
     peek_line(state::ParserState)
@@ -343,6 +383,35 @@ function try_parse_attribute_definition(state::ParserState)
 end
 
 """
+    generate_header_id(text::AbstractString) -> String
+
+Generate an ID from header text following AsciiDoc conventions.
+
+- Converts to lowercase
+- Replaces spaces and non-alphanumeric chars with hyphens
+- Removes consecutive hyphens
+- Removes leading/trailing hyphens
+- Prefixes with underscore if starting with a digit
+"""
+function generate_header_id(text::AbstractString)
+    # Remove inline markup symbols for cleaner IDs
+    clean = replace(text, r"[*_`~^]" => "")
+    # Convert to lowercase
+    clean = lowercase(clean)
+    # Replace non-alphanumeric chars with hyphens
+    clean = replace(clean, r"[^a-z0-9]+" => "-")
+    # Remove leading/trailing hyphens
+    clean = strip(clean, '-')
+    # Handle empty result
+    isempty(clean) && return "_"
+    # Prefix with underscore if starting with digit
+    if isdigit(clean[1])
+        clean = "_" * clean
+    end
+    return clean
+end
+
+"""
     try_parse_header(state::ParserState) -> Union{Header,Nothing}
 
 Try to parse a header (= Title).
@@ -355,7 +424,12 @@ function try_parse_header(state::ParserState)
     if m !== nothing
         level = length(m.captures[1])
         text = m.captures[2]
-        id = m.captures[3] !== nothing ? String(m.captures[3]) : ""
+        # Use explicit ID if provided, otherwise auto-generate
+        id = if m.captures[3] !== nothing
+            String(m.captures[3])
+        else
+            generate_header_id(text)
+        end
         next_line!(state)
         return Header(level, parse_inline(text, state.attributes), id)
     end
@@ -364,9 +438,40 @@ function try_parse_header(state::ParserState)
 end
 
 """
+    _parse_callout_definitions(state::ParserState) -> Dict{Int,String}
+
+Parse callout definitions that follow a code block.
+Callouts have syntax: `<1> Explanation text`
+"""
+function _parse_callout_definitions(state::ParserState)
+    callouts = Dict{Int,String}()
+
+    while (line = peek_line(state)) !== nothing
+        m = match(r"^<(\d+)>\s+(.+)$", line)
+        if m !== nothing
+            num = Base.parse(Int, m.captures[1])
+            text = String(m.captures[2])
+            callouts[num] = text
+            next_line!(state)
+        else
+            # No more callout definitions
+            break
+        end
+    end
+
+    return callouts
+end
+
+"""
     try_parse_code_block(state::ParserState) -> Union{CodeBlock,Nothing}
 
 Try to parse a code block (----).
+
+Supports:
+- `----` (plain code block)
+- `[source,lang]` (code block with language)
+- `[source,lang,linenums]` or `[source,lang%linenums]` (with line numbers)
+- Callout markers `<1>` in code with definitions after the block
 """
 function try_parse_code_block(state::ParserState)
     line = peek_line(state)
@@ -386,12 +491,24 @@ function try_parse_code_block(state::ParserState)
             next_line!(state)
         end
 
-        return CodeBlock(join(code_lines, '\n'), language)
+        # Parse callout definitions after the code block
+        callouts = _parse_callout_definitions(state)
+
+        return CodeBlock(join(code_lines, '\n'), language, Dict{String,String}(), callouts)
     end
 
-    m = match(r"^\[source,\s*(\w+)\]$", line)
+    # Parse [source,...] with options
+    m = match(r"^\[source(?:,\s*(\w+))?((?:,\s*\w+|%\w+)*)\]$", line)
     if m !== nothing
-        language = String(m.captures[1])
+        language = m.captures[1] !== nothing ? String(m.captures[1]) : ""
+        options_str = m.captures[2] !== nothing ? String(m.captures[2]) : ""
+
+        # Parse attributes from options
+        attrs = Dict{String,String}()
+        if contains(options_str, "linenums") || contains(options_str, "%linenums")
+            attrs["linenums"] = "true"
+        end
+
         next_line!(state)
 
         line = peek_line(state)
@@ -408,7 +525,10 @@ function try_parse_code_block(state::ParserState)
                 next_line!(state)
             end
 
-            return CodeBlock(join(code_lines, '\n'), language)
+            # Parse callout definitions after the code block
+            callouts = _parse_callout_definitions(state)
+
+            return CodeBlock(join(code_lines, '\n'), language, attrs, callouts)
         end
     end
 
@@ -945,7 +1065,24 @@ function try_parse_table(state::ParserState)
                 for cell in cells
                     cell_content = strip(cell)
                     if !isempty(cell_content)
-                        push!(current_row_cells, TableCell(parse_inline(String(cell_content), state.attributes)))
+                        cell_attrs = Dict{String,String}()
+
+                        # Parse span syntax: 2+ (colspan), .2+ (rowspan), 2.3+ (both)
+                        span_match = match(r"^(\d+)?\.?(\d+)?\+\s*(.*)$", cell_content)
+                        if span_match !== nothing
+                            colspan = span_match.captures[1]
+                            rowspan = span_match.captures[2]
+                            cell_content = span_match.captures[3] !== nothing ? String(span_match.captures[3]) : ""
+
+                            if colspan !== nothing
+                                cell_attrs["colspan"] = String(colspan)
+                            end
+                            if rowspan !== nothing
+                                cell_attrs["rowspan"] = String(rowspan)
+                            end
+                        end
+
+                        push!(current_row_cells, TableCell(parse_inline(String(cell_content), state.attributes), cell_attrs))
                     end
                 end
 

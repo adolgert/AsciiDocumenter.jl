@@ -93,17 +93,54 @@ end
     to_html(io::IO, node::CodeBlock) -> Nothing
 
 Convert a code block to HTML, writing to IO.
+
+Supports:
+- `linenums` attribute for displaying line numbers
+- Callout markers `<1>` and callout definitions
 """
 function to_html(io::IO, node::CodeBlock)
-    print(io, "<pre><code")
+    show_linenums = get(node.attributes, "linenums", "") == "true"
 
-    if !isempty(node.language)
-        print(io, " class=\"language-", node.language, "\"")
+    if show_linenums
+        # Use table layout for line numbers
+        print(io, "<pre><code")
+        if !isempty(node.language)
+            print(io, " class=\"language-", node.language, "\"")
+        end
+        print(io, ">")
+
+        lines = split(node.content, '\n')
+        for (i, line) in enumerate(lines)
+            print(io, "<span class=\"line-number\">", i, "</span>")
+            write(io, escape_html(line))
+            if i < length(lines)
+                print(io, "\n")
+            end
+        end
+
+        print(io, "</code></pre>")
+    else
+        print(io, "<pre><code")
+
+        if !isempty(node.language)
+            print(io, " class=\"language-", node.language, "\"")
+        end
+
+        print(io, ">")
+        write(io, escape_html(node.content))
+        print(io, "</code></pre>")
     end
 
-    print(io, ">")
-    write(io, escape_html(node.content))
-    print(io, "</code></pre>")
+    # Render callout definitions if present
+    if !isempty(node.callouts)
+        print(io, "\n<dl class=\"callouts\">")
+        for num in sort(collect(keys(node.callouts)))
+            print(io, "\n<dt>", num, "</dt>")
+            print(io, "<dd>", escape_html(node.callouts[num]), "</dd>")
+        end
+        print(io, "\n</dl>")
+    end
+
     return nothing
 end
 
@@ -250,13 +287,44 @@ function to_html(io::IO, node::DefinitionList)
 end
 
 """
+    _parse_column_alignments(cols::String) -> Vector{String}
+
+Parse the cols attribute to extract alignment specifications.
+Returns a vector of HTML text-align values ("left", "center", "right").
+"""
+function _parse_column_alignments(cols::String)
+    alignments = String[]
+    for spec in split(cols, ',')
+        spec = strip(spec)
+        if startswith(spec, "<")
+            push!(alignments, "left")
+        elseif startswith(spec, "^")
+            push!(alignments, "center")
+        elseif startswith(spec, ">")
+            push!(alignments, "right")
+        else
+            push!(alignments, "")  # No alignment specified
+        end
+    end
+    return alignments
+end
+
+"""
     to_html(io::IO, node::Table) -> Nothing
 
 Convert a table to HTML, writing to IO.
+
+Supports `cols` attribute for column alignment (`<` left, `^` center, `>` right).
 """
 function to_html(io::IO, node::Table)
     if isempty(node.rows)
         return nothing
+    end
+
+    # Parse column alignments from cols attribute
+    alignments = String[]
+    if haskey(node.attributes, "cols")
+        alignments = _parse_column_alignments(node.attributes["cols"])
     end
 
     print(io, "<table>\n")
@@ -266,8 +334,32 @@ function to_html(io::IO, node::Table)
 
         tag = (row.is_header || idx == 1) ? "th" : "td"
 
-        for cell in row.cells
-            print(io, "<", tag, ">")
+        for (cell_idx, cell) in enumerate(row.cells)
+            # Build cell attributes
+            attrs = String[]
+
+            # Apply alignment if specified
+            align = cell_idx <= length(alignments) ? alignments[cell_idx] : ""
+            if !isempty(align)
+                push!(attrs, "style=\"text-align: $align\"")
+            end
+
+            # Apply colspan if specified
+            if haskey(cell.attributes, "colspan")
+                push!(attrs, "colspan=\"$(cell.attributes["colspan"])\"")
+            end
+
+            # Apply rowspan if specified
+            if haskey(cell.attributes, "rowspan")
+                push!(attrs, "rowspan=\"$(cell.attributes["rowspan"])\"")
+            end
+
+            if isempty(attrs)
+                print(io, "<", tag, ">")
+            else
+                print(io, "<", tag, " ", join(attrs, " "), ">")
+            end
+
             for child in cell.content
                 to_html(io, child)
             end
@@ -466,11 +558,11 @@ function to_html(node::Union{BlockNode,InlineNode})
 end
 
 """
-    escape_html(text::String) -> String
+    escape_html(text::AbstractString) -> String
 
 Escape special HTML characters.
 """
-function escape_html(text::String)
+function escape_html(text::AbstractString)
     replacements = [
         "&" => "&amp;",
         "<" => "&lt;",

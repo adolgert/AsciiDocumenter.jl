@@ -53,17 +53,22 @@ end
 Paragraph(content::Vector{InlineNode}) = Paragraph(content, Dict{String,String}())
 
 """
-    CodeBlock(content::String, language::String, attributes::Dict{String,String})
+    CodeBlock(content::String, language::String, attributes::Dict{String,String}, callouts::Dict{Int,String})
 
 A source code block with optional syntax highlighting.
+
+The `callouts` dict maps callout numbers (1, 2, ...) to their explanatory text.
+Callouts are numbered markers like `<1>` in code that reference explanations.
 """
 struct CodeBlock <: BlockNode
     content::String
     language::String
     attributes::Dict{String,String}
+    callouts::Dict{Int,String}
 end
 
-CodeBlock(content::String, language::String="") = CodeBlock(content, language, Dict{String,String}())
+CodeBlock(content::String, language::String="") = CodeBlock(content, language, Dict{String,String}(), Dict{Int,String}())
+CodeBlock(content::String, language::String, attributes::Dict{String,String}) = CodeBlock(content, language, attributes, Dict{Int,String}())
 
 """
     BlockQuote(blocks::Vector{BlockNode}, attribution::String)

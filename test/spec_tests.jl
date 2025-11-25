@@ -155,7 +155,27 @@ end
         @test doc.blocks[1].id == "custom-id"
     end
 
-    @test_skip_unimplemented "Auto-generated IDs" "Not implemented"
+    @test_feature "Auto-generated IDs" "= My Section Title -> id=my-section-title" begin
+        # Basic auto-generation
+        doc = parse("= My Section Title")
+        @test doc.blocks[1].id == "my-section-title"
+
+        # With special characters
+        doc = parse("== Hello, World!")
+        @test doc.blocks[1].id == "hello-world"
+
+        # With inline markup (should be stripped)
+        doc = parse("=== *Bold* and _Italic_")
+        @test doc.blocks[1].id == "bold-and-italic"
+
+        # Starting with number gets underscore prefix
+        doc = parse("== 3rd Party Libraries")
+        @test doc.blocks[1].id == "_3rd-party-libraries"
+
+        # Explicit ID still takes precedence
+        doc = parse("= Title [#custom]")
+        @test doc.blocks[1].id == "custom"
+    end
 end
 
 @spec_section "Paragraphs" "https://docs.asciidoctor.org/asciidoc/latest/blocks/paragraphs/" begin
@@ -325,8 +345,55 @@ end
         @test doc.blocks[1].language == "julia"
     end
 
-    @test_skip_unimplemented "Line numbers" "Not implemented"
-    @test_skip_unimplemented "Callouts" "Not implemented"
+    @test_feature "Line numbers" "[source,lang,linenums]" begin
+        # Test with comma-separated linenums
+        doc = parse("[source,julia,linenums]\n----\nx = 1\ny = 2\n----")
+        assert_first_block_type(doc, CodeBlock)
+        @test haskey(doc.blocks[1].attributes, "linenums")
+        @test doc.blocks[1].attributes["linenums"] == "true"
+
+        # Test HTML output has line numbers
+        html = convert(HTML, doc)
+        @test contains(html, "line-number")
+        @test contains(html, ">1<")
+        @test contains(html, ">2<")
+
+        # Test LaTeX output has numbers option
+        latex = convert(LaTeX, doc)
+        @test contains(latex, "numbers=left")
+
+        # Test with % shorthand
+        doc2 = parse("[source,python%linenums]\n----\nprint('hi')\n----")
+        @test haskey(doc2.blocks[1].attributes, "linenums")
+    end
+    @test_feature "Callouts" "<1> explanation" begin
+        # Test code block with callouts
+        doc = parse("""
+----
+x = 1 # <1>
+y = 2 # <2>
+----
+<1> Initialize x
+<2> Initialize y
+""")
+        assert_first_block_type(doc, CodeBlock)
+        cb = doc.blocks[1]
+        @test haskey(cb.callouts, 1)
+        @test haskey(cb.callouts, 2)
+        @test cb.callouts[1] == "Initialize x"
+        @test cb.callouts[2] == "Initialize y"
+
+        # Test HTML output has callout list
+        html = convert(HTML, doc)
+        @test contains(html, "callouts")
+        @test contains(html, "<dt>1</dt>")
+        @test contains(html, "Initialize x")
+
+        # Test LaTeX output has description list
+        latex = convert(LaTeX, doc)
+        @test contains(latex, "\\begin{description}")
+        @test contains(latex, "\\item[1]")
+    end
 end
 
 @spec_section "Quote Blocks" "https://docs.asciidoctor.org/asciidoc/latest/blocks/blockquotes/" begin
@@ -411,8 +478,42 @@ end
         @test length(doc.blocks[1].rows) >= 1
     end
 
-    @test_skip_unimplemented "Column alignment" "Not implemented"
-    @test_skip_unimplemented "Cell spanning" "Not implemented"
+    @test_feature "Column alignment" "[cols=\"<,^,>\"]" begin
+        doc = parse("[cols=\"<,^,>\"]\n|===\n|Left|Center|Right\n|A|B|C\n|===")
+        assert_first_block_type(doc, Table)
+
+        # Verify cols attribute is stored
+        @test haskey(doc.blocks[1].attributes, "cols")
+        @test doc.blocks[1].attributes["cols"] == "<,^,>"
+
+        # Test HTML output has alignment styles
+        html = convert(HTML, doc)
+        @test contains(html, "text-align: left")
+        @test contains(html, "text-align: center")
+        @test contains(html, "text-align: right")
+
+        # Test LaTeX output has column specs
+        latex = convert(LaTeX, doc)
+        @test contains(latex, "\\begin{tabular}{l c r}")
+    end
+    @test_feature "Cell spanning" "2+|Cell spans" begin
+        # Column spanning: 2+ means span 2 columns
+        doc = parse("|===\n|2+|Spans two|End\n|A|B|C\n|===")
+        assert_first_block_type(doc, Table)
+
+        # Check first cell has colspan
+        first_cell = doc.blocks[1].rows[1].cells[1]
+        @test haskey(first_cell.attributes, "colspan")
+        @test first_cell.attributes["colspan"] == "2"
+
+        # Test HTML output has colspan
+        html = convert(HTML, doc)
+        @test contains(html, "colspan=\"2\"")
+
+        # Test LaTeX output has multicolumn
+        latex = convert(LaTeX, doc)
+        @test contains(latex, "\\multicolumn{2}")
+    end
 
     @test_feature "Table header (explicit)" "[%header]\\n|===\\n|H|\\n|D|\\n|===" begin
         doc = parse("[%header]\n|===\n|Header 1|Header 2\n|Data 1|Data 2\n|===")
@@ -546,7 +647,32 @@ end
         @test contains(item_text, "Test Item")
     end
 
-    @test_skip_unimplemented "Built-in attributes (automatic)" "Not implemented"
+    @test_feature "Built-in attributes (automatic)" "{nbsp}, {amp}, etc." begin
+        # Test non-breaking space
+        doc = parse("Text{nbsp}here")
+        para = doc.blocks[1]
+        text_content = join([node.content for node in para.content if node isa Text], "")
+        @test contains(text_content, "\u00A0")  # Non-breaking space
+
+        # Test ampersand
+        doc = parse("A{amp}B")
+        para = doc.blocks[1]
+        text_content = join([node.content for node in para.content if node isa Text], "")
+        @test contains(text_content, "&")
+
+        # Test C++
+        doc = parse("Programming in {cpp}")
+        para = doc.blocks[1]
+        text_content = join([node.content for node in para.content if node isa Text], "")
+        @test contains(text_content, "C++")
+
+        # Test quotes
+        doc = parse("{ldquo}quoted{rdquo}")
+        para = doc.blocks[1]
+        text_content = join([node.content for node in para.content if node isa Text], "")
+        @test contains(text_content, "\u201C")  # Left double quote
+        @test contains(text_content, "\u201D")  # Right double quote
+    end
 end
 
 # ----------------------------------------------------------------------------
@@ -675,7 +801,7 @@ end
     @testset "Semantic HTML5" begin
         doc = parse("= Title\n\nParagraph")
         html = convert(HTML, doc)
-        @test contains(html, "<h1>")
+        @test contains(html, "<h1")  # Headers now have auto-generated IDs
         @test contains(html, "<p>")
     end
 
