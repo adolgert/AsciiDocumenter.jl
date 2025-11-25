@@ -5,7 +5,7 @@ This module provides functions to parse AsciiDoc text into an Abstract Syntax Tr
 """
 
 # Exported functions
-export parse_asciidoc, parse_inline
+export parse_asciidoc, parse_asciidoc_file, parse_inline
 
 # --- Inline Parsing Regexes and Helpers ---
 
@@ -106,19 +106,27 @@ function _parse_inline_match(m::RegexMatch)
 end
 
 """
-    parse_inline(text::AbstractString) -> Vector{InlineNode}
+    parse_inline(text::AbstractString, attributes::Dict{String,String}=Dict{String,String}()) -> Vector{InlineNode}
 
 Parse inline formatting within text using a Regex-based approach.
+
+Optionally substitutes attribute references ({name}) with their values.
 """
-function parse_inline(text::AbstractString)
+function parse_inline(text::AbstractString, attributes::Dict{String,String}=Dict{String,String}())
+    # Substitute attribute references first
+    processed_text = text
+    if !isempty(attributes)
+        processed_text = substitute_attributes(text, attributes)
+    end
+
     nodes = InlineNode[]
     last_idx = 1 # Tracks the end of the last processed segment
 
     # Iterate over all matches of the combined inline token pattern
-    for m in eachmatch(INLINE_TOKEN_PATTERN, text)
+    for m in eachmatch(INLINE_TOKEN_PATTERN, processed_text)
         # Add plain text before the current match
         if m.offset > last_idx
-            push!(nodes, Text(String(text[last_idx:m.offset-1])))
+            push!(nodes, Text(String(processed_text[last_idx:m.offset-1])))
         end
 
         # Parse the matched inline token and add it to nodes
@@ -129,11 +137,29 @@ function parse_inline(text::AbstractString)
     end
 
     # Add any remaining plain text after the last match
-    if last_idx <= length(text)
-        push!(nodes, Text(String(text[last_idx:end])))
+    if last_idx <= length(processed_text)
+        push!(nodes, Text(String(processed_text[last_idx:end])))
     end
 
     return nodes
+end
+
+"""
+    substitute_attributes(text::AbstractString, attributes::Dict{String,String}) -> String
+
+Substitute attribute references ({name}) in text with their values.
+"""
+function substitute_attributes(text::AbstractString, attributes::Dict{String,String})
+    result = String(text)
+
+    # Find and replace all {name} patterns
+    for (name, value) in attributes
+        # Use a simple regex replacement for each attribute
+        pattern = Regex("\\{$name\\}")
+        result = replace(result, pattern => value)
+    end
+
+    return result
 end
 
 # --- Original ParserState and Block Parsing functions (unchanged) ---
@@ -147,9 +173,14 @@ mutable struct ParserState
     lines::Vector{String}
     pos::Int
     attributes::Dict{String,String}
+    base_path::String  # Directory for resolving include paths
+    include_stack::Vector{String}  # Track included files to prevent cycles
 end
 
-ParserState(text::String) = ParserState(split(text, '\n'), 1, Dict{String,String}())
+ParserState(text::String) = ParserState(split(text, '\n'), 1, Dict{String,String}(), pwd(), String[])
+ParserState(text::String, base_path::String) = ParserState(split(text, '\n'), 1, Dict{String,String}(), base_path, String[])
+ParserState(text::String, base_path::String, include_stack::Vector{String}) =
+    ParserState(split(text, '\n'), 1, Dict{String,String}(), base_path, include_stack)
 
 """
     peek_line(state::ParserState)
@@ -186,12 +217,38 @@ function skip_blank_lines!(state::ParserState)
 end
 
 """
-    parse_asciidoc(text::String) -> Document
+    parse_asciidoc(text::String; base_path::String=pwd()) -> Document
 
 Parse an AsciiDoc document into an AST.
+
+# Arguments
+- `text`: The AsciiDoc source text
+- `base_path`: Directory for resolving include directives (default: current directory)
 """
-function parse_asciidoc(text::String)
-    state = ParserState(text)
+function parse_asciidoc(text::String; base_path::String=pwd())
+    state = ParserState(text, base_path)
+    return _parse_asciidoc_state(state)
+end
+
+"""
+    parse_asciidoc_file(filepath::String) -> Document
+
+Parse an AsciiDoc file into an AST. Automatically sets base_path for includes.
+"""
+function parse_asciidoc_file(filepath::String)
+    abs_path = abspath(filepath)
+    base_path = dirname(abs_path)
+    text = read(filepath, String)
+    state = ParserState(text, base_path, [abs_path])
+    return _parse_asciidoc_state(state)
+end
+
+"""
+    _parse_asciidoc_state(state::ParserState) -> Document
+
+Internal function to parse with a given state.
+"""
+function _parse_asciidoc_state(state::ParserState)
     blocks = BlockNode[]
 
     while peek_line(state) !== nothing
@@ -200,7 +257,10 @@ function parse_asciidoc(text::String)
         line === nothing && break
 
         # Try to parse different block types
-        if (block = try_parse_header(state)) !== nothing
+        if try_parse_attribute_definition(state)
+            # Attribute was parsed, continue (doesn't produce a block)
+            continue
+        elseif (block = try_parse_header(state)) !== nothing
             push!(blocks, block)
         elseif (block = try_parse_code_block(state)) !== nothing
             push!(blocks, block)
@@ -208,6 +268,8 @@ function parse_asciidoc(text::String)
             push!(blocks, block)
         elseif (block = try_parse_admonition(state)) !== nothing
             push!(blocks, block)
+        elseif (included_blocks = try_parse_include(state)) !== nothing
+            append!(blocks, included_blocks)
         elseif (block = try_parse_horizontal_rule(state)) !== nothing
             push!(blocks, block)
         elseif (block = try_parse_list(state)) !== nothing
@@ -226,6 +288,43 @@ function parse_asciidoc(text::String)
 end
 
 """
+    try_parse_attribute_definition(state::ParserState) -> Bool
+
+Try to parse a document attribute definition.
+
+Supports:
+- `:name: value` - set attribute
+- `:name!:` - unset attribute
+
+Returns true if an attribute line was parsed, false otherwise.
+"""
+function try_parse_attribute_definition(state::ParserState)
+    line = peek_line(state)
+    line === nothing && return false
+
+    # Match attribute definition: :name: value
+    m = match(r"^:([a-zA-Z0-9_-]+):\s*(.*)$", strip(line))
+    if m !== nothing
+        attr_name = String(m.captures[1])
+        attr_value = String(m.captures[2])
+        state.attributes[attr_name] = attr_value
+        next_line!(state)
+        return true
+    end
+
+    # Match attribute unset: :name!:
+    m = match(r"^:([a-zA-Z0-9_-]+)!:$", strip(line))
+    if m !== nothing
+        attr_name = String(m.captures[1])
+        delete!(state.attributes, attr_name)
+        next_line!(state)
+        return true
+    end
+
+    return false
+end
+
+"""
     try_parse_header(state::ParserState) -> Union{Header,Nothing}
 
 Try to parse a header (= Title).
@@ -241,7 +340,7 @@ function try_parse_header(state::ParserState)
         text = m.captures[2]
         id = m.captures[3] !== nothing ? String(m.captures[3]) : ""
         next_line!(state)
-        return Header(level, parse_inline(text), id)
+        return Header(level, parse_inline(text, state.attributes), id)
     end
 
     return nothing
@@ -401,7 +500,7 @@ function try_parse_admonition(state::ParserState)
 
             if !isempty(content_lines)
                 content_text = join(content_lines, " ")
-                return Admonition(admon_type, [Paragraph(parse_inline(content_text))])
+                return Admonition(admon_type, [Paragraph(parse_inline(content_text, state.attributes))])
             else
                 return Admonition(admon_type, BlockNode[])
             end
@@ -439,13 +538,143 @@ function try_parse_admonition(state::ParserState)
         end
 
         if !isempty(strip(content))
-            return Admonition(admon_type, [Paragraph(parse_inline(content))])
+            return Admonition(admon_type, [Paragraph(parse_inline(content, state.attributes))])
         else
             return Admonition(admon_type, BlockNode[])
         end
     end
 
     return nothing
+end
+
+"""
+    try_parse_include(state::ParserState) -> Union{Vector{BlockNode},Nothing}
+
+Try to parse an include directive.
+
+Supports:
+- `include::path/to/file.adoc[]` - include entire file
+- `include::path/to/file.adoc[lines=1..10]` - include specific lines
+- `include::path/to/file.adoc[lines="1..5;10..15"]` - include multiple ranges
+"""
+function try_parse_include(state::ParserState)
+    line = peek_line(state)
+    line === nothing && return nothing
+
+    # Match include directive: include::path[attributes]
+    m = match(r"^include::([^\[]+)\[(.*)\]$", strip(line))
+    if m === nothing
+        return nothing
+    end
+
+    include_path = String(m.captures[1])
+    attributes_str = String(m.captures[2])
+    next_line!(state)
+
+    # Resolve the path
+    if isabspath(include_path)
+        resolved_path = include_path
+    else
+        resolved_path = normpath(joinpath(state.base_path, include_path))
+    end
+
+    # Check for circular includes
+    if resolved_path in state.include_stack
+        @warn "Circular include detected: $resolved_path"
+        return BlockNode[]
+    end
+
+    # Check if file exists
+    if !isfile(resolved_path)
+        @warn "Include file not found: $resolved_path"
+        return BlockNode[]
+    end
+
+    # Read the file content
+    content = read(resolved_path, String)
+
+    # Parse attributes for line selection
+    lines_attr = _parse_include_lines_attr(attributes_str)
+
+    # Apply line filtering if specified
+    if lines_attr !== nothing
+        content_lines = split(content, '\n')
+        selected_lines = _select_lines(content_lines, lines_attr)
+        content = join(selected_lines, '\n')
+    end
+
+    # Parse the included content recursively
+    new_include_stack = vcat(state.include_stack, [resolved_path])
+    include_state = ParserState(content, dirname(resolved_path), new_include_stack)
+    included_doc = _parse_asciidoc_state(include_state)
+
+    return included_doc.blocks
+end
+
+"""
+    _parse_include_lines_attr(attr_str::String) -> Union{Vector{UnitRange{Int}},Nothing}
+
+Parse the lines= attribute from include directive.
+
+Supports formats:
+- `lines=5` - single line
+- `lines=1..10` - range
+- `lines=1..5;10..15` - multiple ranges
+- `lines="1..5;10..15"` - quoted
+"""
+function _parse_include_lines_attr(attr_str::String)
+    # Look for lines= attribute
+    m = match(r"lines=[\"']?([^\"'\]]+)[\"']?", attr_str)
+    if m === nothing
+        return nothing
+    end
+
+    lines_spec = String(m.captures[1])
+    ranges = UnitRange{Int}[]
+
+    # Split by semicolon for multiple ranges
+    for part in split(lines_spec, ';')
+        part = strip(part)
+        if isempty(part)
+            continue
+        end
+
+        # Check for range (start..end)
+        range_match = match(r"^(\d+)\.\.(\d+)$", part)
+        if range_match !== nothing
+            start_line = Base.parse(Int, range_match.captures[1])
+            end_line = Base.parse(Int, range_match.captures[2])
+            push!(ranges, start_line:end_line)
+            continue
+        end
+
+        # Check for single line
+        if match(r"^\d+$", part) !== nothing
+            line_num = Base.parse(Int, part)
+            push!(ranges, line_num:line_num)
+        end
+    end
+
+    return isempty(ranges) ? nothing : ranges
+end
+
+"""
+    _select_lines(lines::Vector, ranges::Vector{UnitRange{Int}}) -> Vector{String}
+
+Select lines based on the given ranges.
+"""
+function _select_lines(lines::AbstractVector, ranges::Vector{UnitRange{Int}})
+    selected = String[]
+
+    for range in ranges
+        for i in range
+            if 1 <= i <= length(lines)
+                push!(selected, String(lines[i]))
+            end
+        end
+    end
+
+    return selected
 end
 
 """
@@ -510,7 +739,7 @@ function parse_unordered_list(state::ParserState)
         content = String(m.captures[1])
         next_line!(state)
 
-        push!(items, ListItem(parse_inline(content)))
+        push!(items, ListItem(parse_inline(content, state.attributes)))
     end
 
     return UnorderedList(items)
@@ -533,7 +762,7 @@ function parse_ordered_list(state::ParserState)
         content = String(m.captures[1])
         next_line!(state)
 
-        push!(items, ListItem(parse_inline(content)))
+        push!(items, ListItem(parse_inline(content, state.attributes)))
     end
 
     return OrderedList(items)
@@ -561,10 +790,10 @@ function parse_definition_list(state::ParserState)
         desc_line = peek_line(state)
         if desc_line !== nothing && !isempty(strip(desc_line))
             next_line!(state)
-            push!(items, (DefinitionTerm(parse_inline(term)),
-                         DefinitionDescription(parse_inline(strip(desc_line)))))
+            push!(items, (DefinitionTerm(parse_inline(term, state.attributes)),
+                         DefinitionDescription(parse_inline(strip(desc_line), state.attributes))))
         else
-            push!(items, (DefinitionTerm(parse_inline(term)),
+            push!(items, (DefinitionTerm(parse_inline(term, state.attributes)),
                          DefinitionDescription(InlineNode[])))
         end
     end
@@ -603,7 +832,7 @@ function try_parse_table(state::ParserState)
                 for cell in cells
                     cell_content = strip(cell)
                     if !isempty(cell_content)
-                        push!(current_row_cells, TableCell(parse_inline(String(cell_content))))
+                        push!(current_row_cells, TableCell(parse_inline(String(cell_content), state.attributes)))
                     end
                 end
 
@@ -657,7 +886,7 @@ function try_parse_paragraph(state::ParserState)
 
     if !isempty(lines)
         text = join(lines, " ")
-        return Paragraph(parse_inline(text))
+        return Paragraph(parse_inline(text, state.attributes))
     end
 
     return nothing
