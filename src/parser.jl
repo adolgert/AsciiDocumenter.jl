@@ -1320,15 +1320,30 @@ function try_parse_table(state::ParserState)
         while (line = peek_line(state)) !== nothing
             if startswith(line, "|===")
                 if !isempty(current_row_cells)
-                    push!(rows, TableRow(current_row_cells))
+                    is_header = isempty(rows) && has_header_option
+                    push!(rows, TableRow(current_row_cells, is_header))
                 end
                 next_line!(state)
                 break
             end
 
+            # Blank line ends the current row (when cells are on separate lines)
+            if isempty(strip(line))
+                if !isempty(current_row_cells)
+                    is_header = isempty(rows) && has_header_option
+                    push!(rows, TableRow(current_row_cells, is_header))
+                    current_row_cells = TableCell[]
+                end
+                next_line!(state)
+                continue
+            end
+
             if startswith(line, "|")
-                cells = split(line[2:end], '|')
-                for cell in cells
+                # Count how many cells are on this line (number of | separators)
+                cells_on_line = split(line[2:end], '|')
+                num_cells_on_line = count(c -> !isempty(strip(c)), cells_on_line)
+
+                for cell in cells_on_line
                     cell_content = strip(cell)
                     if !isempty(cell_content)
                         cell_attrs = Dict{String,String}()
@@ -1352,8 +1367,9 @@ function try_parse_table(state::ParserState)
                     end
                 end
 
-                if !isempty(current_row_cells)
-                    # First row is header if option is set
+                # If this line has multiple cells, it's a complete row (old AsciiDoc style)
+                # Otherwise, accumulate cells until blank line
+                if num_cells_on_line > 1 && !isempty(current_row_cells)
                     is_header = isempty(rows) && has_header_option
                     push!(rows, TableRow(current_row_cells, is_header))
                     current_row_cells = TableCell[]
