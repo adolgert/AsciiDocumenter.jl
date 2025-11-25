@@ -182,6 +182,8 @@ end
     to_html(io::IO, node::OrderedList) -> Nothing
 
 Convert an ordered list to HTML, writing to IO.
+
+Supports `start` attribute for custom starting number.
 """
 function to_html(io::IO, node::OrderedList)
     print(io, "<ol")
@@ -194,6 +196,11 @@ function to_html(io::IO, node::OrderedList)
         print(io, " type=\"i\"")
     elseif node.style == "upperroman"
         print(io, " type=\"I\"")
+    end
+
+    # Add start attribute if specified
+    if haskey(node.attributes, "start")
+        print(io, " start=\"", node.attributes["start"], "\"")
     end
 
     print(io, ">\n")

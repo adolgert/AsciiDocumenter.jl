@@ -156,9 +156,19 @@ end
     to_latex(io::IO, node::OrderedList) -> Nothing
 
 Convert an ordered list to LaTeX enumerate environment, writing to IO.
+
+Supports `start` attribute for custom starting number.
 """
 function to_latex(io::IO, node::OrderedList)
     print(io, "\\begin{enumerate}\n")
+
+    # Handle custom start number
+    if haskey(node.attributes, "start")
+        start_val = tryparse(Int, node.attributes["start"])
+        if start_val !== nothing && start_val != 1
+            print(io, "\\setcounter{enumi}{", start_val - 1, "}\n")
+        end
+    end
 
     for item in node.items
         print(io, "\\item ")

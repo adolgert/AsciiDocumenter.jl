@@ -698,10 +698,31 @@ end
     try_parse_list(state::ParserState) -> Union{List,Nothing}
 
 Try to parse a list (unordered or ordered).
+
+Supports attribute blocks before lists like `[start=5]` for ordered lists.
 """
 function try_parse_list(state::ParserState)
     line = peek_line(state)
     line === nothing && return nothing
+
+    list_attrs = Dict{String,String}()
+
+    # Check for attribute block before list - use lookahead
+    attr_match = match(r"^\[([^\]]+)\]\s*$", strip(line))
+    if attr_match !== nothing
+        # Lookahead: check if next line is a list item
+        if state.pos + 1 <= length(state.lines)
+            next_line_content = state.lines[state.pos + 1]
+            if match(r"^[\*\-\.]+\s+", next_line_content) !== nothing ||
+               match(r"^\d+\.\s+", next_line_content) !== nothing
+                # This is a list with attributes - consume the attribute line
+                attr_str = attr_match.captures[1]
+                _parse_block_attributes!(list_attrs, String(attr_str))
+                next_line!(state)
+                line = peek_line(state)
+            end
+        end
+    end
 
     # Unordered list: *, **, ***, or -
     if match(r"^\*+\s+", line) !== nothing || match(r"^-\s+", line) !== nothing
@@ -710,7 +731,7 @@ function try_parse_list(state::ParserState)
 
     # Ordered list: ., .., ..., or 1. 2. etc.
     if match(r"^\.+\s+", line) !== nothing || match(r"^\d+\.\s+", line) !== nothing
-        return parse_ordered_list(state)
+        return parse_ordered_list(state, 1, list_attrs)
     end
 
     # Definition list: term::
@@ -776,7 +797,7 @@ function parse_unordered_list(state::ParserState, level::Int=1)
 end
 
 """
-    parse_ordered_list(state::ParserState, level::Int=1) -> OrderedList
+    parse_ordered_list(state::ParserState, level::Int=1, attrs::Dict{String,String}=Dict{String,String}()) -> OrderedList
 
 Parse an ordered list with support for nesting.
 
@@ -786,8 +807,10 @@ AsciiDoc nesting uses multiple dots:
 - `...` = level 3, etc.
 
 Numbered format (1., 2., etc.) is always treated as level 1.
+
+Supports attributes like `[start=5]` for custom starting number.
 """
-function parse_ordered_list(state::ParserState, level::Int=1)
+function parse_ordered_list(state::ParserState, level::Int=1, attrs::Dict{String,String}=Dict{String,String}())
     items = ListItem[]
 
     while (line = peek_line(state)) !== nothing
@@ -830,7 +853,7 @@ function parse_ordered_list(state::ParserState, level::Int=1)
         push!(items, ListItem(parse_inline(content, state.attributes)))
     end
 
-    return OrderedList(items)
+    return OrderedList(items, "arabic", attrs)
 end
 
 """

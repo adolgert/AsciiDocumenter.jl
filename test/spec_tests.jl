@@ -12,7 +12,7 @@ module SpecTests
 using Test
 using AsciiDoc
 # Explicitly import AsciiDoc's parse to avoid ambiguity with Base.parse
-import AsciiDoc: parse, convert, LaTeX, HTML, Document, Admonition, Text, Paragraph
+import AsciiDoc: parse, convert, LaTeX, HTML, Document, Admonition, Text, Paragraph, Image
 
 # Test DSL for spec compliance
 """
@@ -287,7 +287,15 @@ end
         @test length(doc.blocks[1].items[1].nested.items) == 2
     end
 
-    @test_skip_unimplemented "Custom start number" "Not implemented"
+    @test_feature "Custom start number" "[start=5]\\n. item" begin
+        doc = parse("[start=5]\n. Fifth\n. Sixth\n. Seventh")
+        assert_first_block_type(doc, OrderedList)
+        @test haskey(doc.blocks[1].attributes, "start")
+        @test doc.blocks[1].attributes["start"] == "5"
+        # Verify HTML output has start attribute
+        html = convert(HTML, doc)
+        @test contains(html, "start=\"5\"")
+    end
 end
 
 @spec_section "Definition Lists" "https://docs.asciidoctor.org/asciidoc/latest/lists/description/" begin
@@ -432,8 +440,29 @@ end
         assert_contains_node_type(doc, Image)
     end
 
-    @test_skip_unimplemented "Block image (image::)" "Not implemented"
-    @test_skip_unimplemented "Image attributes (width, height)" "Not implemented"
+    @test_feature "Block image (image::)" "image::file.png[]" begin
+        doc = parse("image::test.png[Alt text]")
+        # Block image creates a paragraph containing the image
+        @test length(doc.blocks) == 1
+        @test doc.blocks[1] isa Paragraph
+        @test length(doc.blocks[1].content) == 1
+        img = doc.blocks[1].content[1]
+        @test img isa Image
+        @test img.url == "test.png"
+        @test img.alt_text == "Alt text"
+    end
+
+    @test_feature "Image attributes (width, height)" "image::file.png[alt,width=100]" begin
+        doc = parse("image::logo.png[Logo, width=200, height=100]")
+        @test length(doc.blocks) == 1
+        img = doc.blocks[1].content[1]
+        @test img isa Image
+        @test img.alt_text == "Logo"
+        @test haskey(img.attributes, "width")
+        @test img.attributes["width"] == "200"
+        @test haskey(img.attributes, "height")
+        @test img.attributes["height"] == "100"
+    end
 end
 
 @spec_section "Cross References" "https://docs.asciidoctor.org/asciidoc/latest/macros/xref/" begin
