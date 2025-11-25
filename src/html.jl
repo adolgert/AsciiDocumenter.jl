@@ -102,7 +102,6 @@ function to_html(io::IO, node::CodeBlock)
     show_linenums = get(node.attributes, "linenums", "") == "true"
 
     if show_linenums
-        # Use table layout for line numbers
         print(io, "<pre><code")
         if !isempty(node.language)
             print(io, " class=\"language-", node.language, "\"")
@@ -131,7 +130,6 @@ function to_html(io::IO, node::CodeBlock)
         print(io, "</code></pre>")
     end
 
-    # Render callout definitions if present
     if !isempty(node.callouts)
         print(io, "\n<dl class=\"callouts\">")
         for num in sort(collect(keys(node.callouts)))
@@ -176,7 +174,6 @@ Uses custom title if provided, otherwise defaults to capitalized type.
 function to_html(io::IO, node::Admonition)
     print(io, "<div class=\"admonition ", node.type, "\">\n")
 
-    # Use custom title if provided, otherwise default to capitalized type
     title = isempty(node.title) ? uppercase(node.type[1:1]) * node.type[2:end] : node.title
     print(io, "<p class=\"admonition-title\">", escape_html(title), "</p>\n")
 
@@ -235,7 +232,6 @@ function to_html(io::IO, node::OrderedList)
         print(io, " type=\"I\"")
     end
 
-    # Add start attribute if specified
     if haskey(node.attributes, "start")
         print(io, " start=\"", node.attributes["start"], "\"")
     end
@@ -321,7 +317,6 @@ function to_html(io::IO, node::Table)
         return nothing
     end
 
-    # Parse column alignments from cols attribute
     alignments = String[]
     if haskey(node.attributes, "cols")
         alignments = _parse_column_alignments(node.attributes["cols"])
@@ -335,21 +330,17 @@ function to_html(io::IO, node::Table)
         tag = (row.is_header || idx == 1) ? "th" : "td"
 
         for (cell_idx, cell) in enumerate(row.cells)
-            # Build cell attributes
             attrs = String[]
 
-            # Apply alignment if specified
             align = cell_idx <= length(alignments) ? alignments[cell_idx] : ""
             if !isempty(align)
                 push!(attrs, "style=\"text-align: $align\"")
             end
 
-            # Apply colspan if specified
             if haskey(cell.attributes, "colspan")
                 push!(attrs, "colspan=\"$(cell.attributes["colspan"])\"")
             end
 
-            # Apply rowspan if specified
             if haskey(cell.attributes, "rowspan")
                 push!(attrs, "rowspan=\"$(cell.attributes["rowspan"])\"")
             end

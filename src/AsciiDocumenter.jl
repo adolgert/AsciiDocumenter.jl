@@ -51,28 +51,23 @@ html = convert(HTML, doc)
 """
 module AsciiDocumenter
 
-# Include all source files (flat structure)
 include("ast.jl")
 include("parser.jl")
 include("latex.jl")
 include("html.jl")
 include("integration.jl")
 
-# Main module exports
 export Document, Header, Paragraph, CodeBlock, BlockQuote,
        UnorderedList, OrderedList, DefinitionList,
        Table, HorizontalRule,
        Text, Bold, Italic, Monospace, Link, Image, CrossRef,
        parse, convert, LaTeX, HTML, to_markdownast, to_markdown
 
-# Backend types for convert API
 struct LaTeXBackend end
 struct HTMLBackend end
 
 const LaTeX = LaTeXBackend
 const HTML = HTMLBackend
-
-# Main API
 
 """
     parse(text::String; base_path::String=pwd()) -> Document
@@ -130,8 +125,6 @@ html_standalone = convert(HTML, doc, standalone=true)
 """
 Base.convert(::Type{HTML}, doc::Document; standalone::Bool=false) =
     to_html(doc, standalone=standalone)
-
-# Convenience functions
 
 """
     asciidoc_to_latex(text::String) -> String
