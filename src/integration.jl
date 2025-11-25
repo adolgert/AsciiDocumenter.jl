@@ -1,0 +1,550 @@
+"""
+Documenter.jl Integration for AsciiDoc.jl
+
+This module provides conversion from AsciiDoc AST to MarkdownAST, enabling
+AsciiDoc.jl to work as a first-class plugin for Documenter.jl.
+
+# Usage
+
+```julia
+using AsciiDoc
+using MarkdownAST
+
+# Parse AsciiDoc document
+doc = parse_asciidoc(text)
+
+# Convert to MarkdownAST
+md_ast = to_markdownast(doc)
+
+# Use with Documenter.jl
+# (md_ast can now be used in Documenter pipelines)
+```
+"""
+
+import MarkdownAST
+import MarkdownAST: Node, @ast
+
+export to_markdownast
+
+"""
+    to_markdownast(doc::Document) -> MarkdownAST.Node
+
+Convert an AsciiDoc document to MarkdownAST representation.
+
+This enables integration with Documenter.jl and other tools that consume MarkdownAST.
+"""
+function to_markdownast(doc::Document)
+    # Create root document node
+    root = Node(MarkdownAST.Document())
+
+    # Convert all block nodes
+    for block in doc.blocks
+        child = convert_block(block)
+        if child !== nothing
+            push!(root.children, child)
+        end
+    end
+
+    return root
+end
+
+# ============================================================================
+# Block Node Conversions
+# ============================================================================
+
+"""
+    convert_block(node::BlockNode) -> Union{MarkdownAST.Node, Nothing}
+
+Convert an AsciiDoc block node to MarkdownAST.
+"""
+function convert_block(node::BlockNode)
+    # Dispatch to specific conversion methods
+    if node isa Header
+        return convert_header(node)
+    elseif node isa Paragraph
+        return convert_paragraph(node)
+    elseif node isa CodeBlock
+        return convert_codeblock(node)
+    elseif node isa BlockQuote
+        return convert_blockquote(node)
+    elseif node isa UnorderedList
+        return convert_unordered_list(node)
+    elseif node isa OrderedList
+        return convert_ordered_list(node)
+    elseif node isa DefinitionList
+        return convert_definition_list(node)
+    elseif node isa Table
+        return convert_table(node)
+    elseif node isa HorizontalRule
+        return convert_horizontal_rule(node)
+    else
+        @warn "Unknown block node type: $(typeof(node))"
+        return nothing
+    end
+end
+
+"""
+    convert_header(node::Header) -> MarkdownAST.Node
+
+Convert AsciiDoc Header to MarkdownAST Heading.
+"""
+function convert_header(node::Header)
+    heading = Node(MarkdownAST.Heading(node.level))
+
+    # Convert inline content
+    for inline in node.text
+        child = convert_inline(inline)
+        if child !== nothing
+            push!(heading.children, child)
+        end
+    end
+
+    return heading
+end
+
+"""
+    convert_paragraph(node::Paragraph) -> MarkdownAST.Node
+
+Convert AsciiDoc Paragraph to MarkdownAST Paragraph.
+"""
+function convert_paragraph(node::Paragraph)
+    para = Node(MarkdownAST.Paragraph())
+
+    # Convert inline content
+    for inline in node.content
+        child = convert_inline(inline)
+        if child !== nothing
+            push!(para.children, child)
+        end
+    end
+
+    return para
+end
+
+"""
+    convert_codeblock(node::CodeBlock) -> MarkdownAST.Node
+
+Convert AsciiDoc CodeBlock to MarkdownAST CodeBlock.
+"""
+function convert_codeblock(node::CodeBlock)
+    # MarkdownAST CodeBlock stores info (language) and code separately
+    code_node = Node(MarkdownAST.CodeBlock(node.language, node.content))
+    return code_node
+end
+
+"""
+    convert_blockquote(node::BlockQuote) -> MarkdownAST.Node
+
+Convert AsciiDoc BlockQuote to MarkdownAST BlockQuote.
+"""
+function convert_blockquote(node::BlockQuote)
+    quote_node = Node(MarkdownAST.BlockQuote())
+
+    # Convert nested blocks
+    for block in node.blocks
+        child = convert_block(block)
+        if child !== nothing
+            push!(quote_node.children, child)
+        end
+    end
+
+    # Note: MarkdownAST doesn't have native attribution support
+    # If attribution exists, add it as a paragraph
+    if !isempty(node.attribution)
+        attr_para = Node(MarkdownAST.Paragraph())
+        push!(attr_para.children, Node(MarkdownAST.Text("— $(node.attribution)")))
+        push!(quote_node.children, attr_para)
+    end
+
+    return quote_node
+end
+
+"""
+    convert_unordered_list(node::UnorderedList) -> MarkdownAST.Node
+
+Convert AsciiDoc UnorderedList to MarkdownAST List (unordered).
+"""
+function convert_unordered_list(node::UnorderedList)
+    list_node = Node(MarkdownAST.List(:bullet, false))
+
+    for item in node.items
+        item_node = convert_list_item(item)
+        if item_node !== nothing
+            push!(list_node.children, item_node)
+        end
+    end
+
+    return list_node
+end
+
+"""
+    convert_ordered_list(node::OrderedList) -> MarkdownAST.Node
+
+Convert AsciiDoc OrderedList to MarkdownAST List (ordered).
+"""
+function convert_ordered_list(node::OrderedList)
+    list_node = Node(MarkdownAST.List(:ordered, false))
+
+    for item in node.items
+        item_node = convert_list_item(item)
+        if item_node !== nothing
+            push!(list_node.children, item_node)
+        end
+    end
+
+    return list_node
+end
+
+"""
+    convert_list_item(item::ListItem) -> MarkdownAST.Node
+
+Convert AsciiDoc ListItem to MarkdownAST Item.
+
+Note: MarkdownAST Item nodes can only contain block-level elements,
+so we wrap inline content in a Paragraph.
+"""
+function convert_list_item(item::ListItem)
+    item_node = Node(MarkdownAST.Item())
+
+    # Wrap inline content in a paragraph (Item can only contain blocks)
+    para = Node(MarkdownAST.Paragraph())
+    for inline in item.content
+        child = convert_inline(inline)
+        if child !== nothing
+            push!(para.children, child)
+        end
+    end
+    push!(item_node.children, para)
+
+    # Handle nested lists
+    if item.nested !== nothing
+        nested = convert_block(item.nested)
+        if nested !== nothing
+            push!(item_node.children, nested)
+        end
+    end
+
+    return item_node
+end
+
+"""
+    convert_definition_list(node::DefinitionList) -> MarkdownAST.Node
+
+Convert AsciiDoc DefinitionList to MarkdownAST representation.
+
+Note: MarkdownAST doesn't have native definition list support,
+so we convert to a regular list with bold terms. List items must
+contain block-level elements, so we wrap in paragraphs.
+"""
+function convert_definition_list(node::DefinitionList)
+    # Use unordered list as fallback
+    list_node = Node(MarkdownAST.List(:bullet, false))
+
+    for (term, desc) in node.items
+        item_node = Node(MarkdownAST.Item())
+        para = Node(MarkdownAST.Paragraph())
+
+        # Term in bold
+        strong_node = Node(MarkdownAST.Strong())
+        for inline in term.content
+            child = convert_inline(inline)
+            if child !== nothing
+                push!(strong_node.children, child)
+            end
+        end
+        push!(para.children, strong_node)
+
+        # Add colon and space
+        push!(para.children, Node(MarkdownAST.Text(": ")))
+
+        # Description
+        for inline in desc.content
+            child = convert_inline(inline)
+            if child !== nothing
+                push!(para.children, child)
+            end
+        end
+
+        push!(item_node.children, para)
+        push!(list_node.children, item_node)
+    end
+
+    return list_node
+end
+
+"""
+    convert_table(node::Table) -> MarkdownAST.Node
+
+Convert AsciiDoc Table to MarkdownAST Table.
+
+Note: MarkdownAST has limited table support. Complex tables may not convert perfectly.
+"""
+function convert_table(node::Table)
+    if isempty(node.rows)
+        return nothing
+    end
+
+    # Determine number of columns from first row
+    ncols = length(node.rows[1].cells)
+
+    # Create table with spec (alignment for each column)
+    # Default to left alignment for all columns
+    spec = fill(:left, ncols)
+    table_node = Node(MarkdownAST.Table(spec))
+
+    # Convert rows
+    for (idx, row) in enumerate(node.rows)
+        row_node = Node(MarkdownAST.TableRow())
+
+        for cell in row.cells
+            # Determine if header (first row or explicitly marked)
+            is_header = (idx == 1) || row.is_header
+            cell_element = is_header ? MarkdownAST.TableHeader() : MarkdownAST.TableCell()
+            cell_node = Node(cell_element)
+
+            # Table cells contain inline elements directly (no paragraph wrapper needed)
+            for inline in cell.content
+                child = convert_inline(inline)
+                if child !== nothing
+                    push!(cell_node.children, child)
+                end
+            end
+
+            push!(row_node.children, cell_node)
+        end
+
+        push!(table_node.children, row_node)
+    end
+
+    return table_node
+end
+
+"""
+    convert_horizontal_rule(node::HorizontalRule) -> MarkdownAST.Node
+
+Convert AsciiDoc HorizontalRule to MarkdownAST ThematicBreak.
+"""
+function convert_horizontal_rule(node::HorizontalRule)
+    return Node(MarkdownAST.ThematicBreak())
+end
+
+# ============================================================================
+# Inline Node Conversions
+# ============================================================================
+
+"""
+    convert_inline(node::InlineNode) -> Union{MarkdownAST.Node, Nothing}
+
+Convert an AsciiDoc inline node to MarkdownAST.
+"""
+function convert_inline(node::InlineNode)
+    if node isa Text
+        return convert_text(node)
+    elseif node isa Bold
+        return convert_bold(node)
+    elseif node isa Italic
+        return convert_italic(node)
+    elseif node isa Monospace
+        return convert_monospace(node)
+    elseif node isa Subscript
+        return convert_subscript(node)
+    elseif node isa Superscript
+        return convert_superscript(node)
+    elseif node isa Link
+        return convert_link(node)
+    elseif node isa Image
+        return convert_image(node)
+    elseif node isa CrossRef
+        return convert_crossref(node)
+    elseif node isa LineBreak
+        return convert_linebreak(node)
+    else
+        @warn "Unknown inline node type: $(typeof(node))"
+        return nothing
+    end
+end
+
+"""
+    convert_text(node::Text) -> MarkdownAST.Node
+
+Convert AsciiDoc Text to MarkdownAST Text.
+"""
+function convert_text(node::Text)
+    return Node(MarkdownAST.Text(node.content))
+end
+
+"""
+    convert_bold(node::Bold) -> MarkdownAST.Node
+
+Convert AsciiDoc Bold to MarkdownAST Strong.
+"""
+function convert_bold(node::Bold)
+    strong = Node(MarkdownAST.Strong())
+
+    for inline in node.content
+        child = convert_inline(inline)
+        if child !== nothing
+            push!(strong.children, child)
+        end
+    end
+
+    return strong
+end
+
+"""
+    convert_italic(node::Italic) -> MarkdownAST.Node
+
+Convert AsciiDoc Italic to MarkdownAST Emph.
+"""
+function convert_italic(node::Italic)
+    emph = Node(MarkdownAST.Emph())
+
+    for inline in node.content
+        child = convert_inline(inline)
+        if child !== nothing
+            push!(emph.children, child)
+        end
+    end
+
+    return emph
+end
+
+"""
+    convert_monospace(node::Monospace) -> MarkdownAST.Node
+
+Convert AsciiDoc Monospace to MarkdownAST Code.
+"""
+function convert_monospace(node::Monospace)
+    # Inline code in MarkdownAST is just Code with the text content
+    # We need to extract the text from the inline nodes
+    text_content = ""
+    for inline in node.content
+        if inline isa Text
+            text_content *= inline.content
+        end
+    end
+
+    return Node(MarkdownAST.Code(text_content))
+end
+
+"""
+    convert_subscript(node::Subscript) -> MarkdownAST.Node
+
+Convert AsciiDoc Subscript to MarkdownAST representation.
+
+Note: MarkdownAST doesn't have native subscript support.
+We use HTML fallback: <sub>text</sub>
+"""
+function convert_subscript(node::Subscript)
+    # Use HTMLInline as fallback
+    text_content = ""
+    for inline in node.content
+        if inline isa Text
+            text_content *= inline.content
+        end
+    end
+
+    html = "<sub>$(text_content)</sub>"
+    return Node(MarkdownAST.HTMLInline(html))
+end
+
+"""
+    convert_superscript(node::Superscript) -> MarkdownAST.Node
+
+Convert AsciiDoc Superscript to MarkdownAST representation.
+
+Note: MarkdownAST doesn't have native superscript support.
+We use HTML fallback: <sup>text</sup>
+"""
+function convert_superscript(node::Superscript)
+    # Use HTMLInline as fallback
+    text_content = ""
+    for inline in node.content
+        if inline isa Text
+            text_content *= inline.content
+        end
+    end
+
+    html = "<sup>$(text_content)</sup>"
+    return Node(MarkdownAST.HTMLInline(html))
+end
+
+"""
+    convert_link(node::Link) -> MarkdownAST.Node
+
+Convert AsciiDoc Link to MarkdownAST Link.
+"""
+function convert_link(node::Link)
+    # MarkdownAST Link(destination, title)
+    link = Node(MarkdownAST.Link(node.url, ""))
+
+    # Convert link text
+    if !isempty(node.text)
+        for inline in node.text
+            child = convert_inline(inline)
+            if child !== nothing
+                push!(link.children, child)
+            end
+        end
+    else
+        # Use URL as text if no text provided
+        push!(link.children, Node(MarkdownAST.Text(node.url)))
+    end
+
+    return link
+end
+
+"""
+    convert_image(node::Image) -> MarkdownAST.Node
+
+Convert AsciiDoc Image to MarkdownAST Image.
+"""
+function convert_image(node::Image)
+    # MarkdownAST Image(destination, title)
+    # Use alt_text as title
+    img = Node(MarkdownAST.Image(node.url, node.alt_text))
+
+    # Image in MarkdownAST can have text content (the alt text)
+    if !isempty(node.alt_text)
+        push!(img.children, Node(MarkdownAST.Text(node.alt_text)))
+    end
+
+    return img
+end
+
+"""
+    convert_crossref(node::CrossRef) -> MarkdownAST.Node
+
+Convert AsciiDoc CrossRef to MarkdownAST Link.
+
+Cross-references become internal links with # prefix.
+"""
+function convert_crossref(node::CrossRef)
+    # Convert to link with # prefix
+    destination = "#$(node.target)"
+    link = Node(MarkdownAST.Link(destination, ""))
+
+    # Convert link text
+    if !isempty(node.text)
+        for inline in node.text
+            child = convert_inline(inline)
+            if child !== nothing
+                push!(link.children, child)
+            end
+        end
+    else
+        # Use target as text if no text provided
+        push!(link.children, Node(MarkdownAST.Text(node.target)))
+    end
+
+    return link
+end
+
+"""
+    convert_linebreak(node::LineBreak) -> MarkdownAST.Node
+
+Convert AsciiDoc LineBreak to MarkdownAST LineBreak.
+"""
+function convert_linebreak(node::LineBreak)
+    return Node(MarkdownAST.LineBreak())
+end
