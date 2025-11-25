@@ -1,0 +1,94 @@
+= API Reference
+
+Complete reference for all exported types and functions in AsciiDocumenter.jl.
+
+== Parsing Functions
+
+[source,@docs]
+----
+AsciiDocumenter.parse
+parse_asciidoc
+parse_asciidoc_file
+parse_inline
+----
+
+== Conversion Functions
+
+[source,@docs]
+----
+Base.convert(::Type{AsciiDocumenter.LaTeX}, ::Document)
+Base.convert(::Type{AsciiDocumenter.HTML}, ::Document)
+asciidoc_to_html
+asciidoc_to_latex
+----
+
+== Backend Functions
+
+=== HTML Backend
+
+[source,@docs]
+----
+to_html
+----
+
+=== LaTeX Backend
+
+[source,@docs]
+----
+to_latex
+----
+
+=== MarkdownAST Integration
+
+[source,@docs]
+----
+to_markdownast
+to_markdown
+----
+
+== Document Structure
+
+[source,@docs]
+----
+AsciiDocumenter.Document
+----
+
+== Block-Level Nodes
+
+[source,@docs]
+----
+AsciiDocumenter.Header
+AsciiDocumenter.Paragraph
+AsciiDocumenter.CodeBlock
+AsciiDocumenter.BlockQuote
+AsciiDocumenter.HorizontalRule
+----
+
+== List Nodes
+
+[source,@docs]
+----
+AsciiDocumenter.UnorderedList
+AsciiDocumenter.OrderedList
+AsciiDocumenter.DefinitionList
+----
+
+== Table Nodes
+
+[source,@docs]
+----
+AsciiDocumenter.Table
+----
+
+== Inline Nodes
+
+[source,@docs]
+----
+AsciiDocumenter.Text
+AsciiDocumenter.Bold
+AsciiDocumenter.Italic
+AsciiDocumenter.Monospace
+AsciiDocumenter.Link
+AsciiDocumenter.Image
+AsciiDocumenter.CrossRef
+----

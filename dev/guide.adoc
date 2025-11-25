@@ -1,0 +1,100 @@
+= Guide
+
+This guide assumes familiarity with link:https://documenter.juliadocs.org/[Documenter.jl]. It covers how to write documentation in AsciiDoc.
+
+== Conversion Workflow
+
+Documenter.jl works on Markdown files. To use AsciiDoc, you must convert your `.adoc` files to `.md` *before* `makedocs` runs.
+
+=== In `docs/make.jl`
+
+[source,julia]
+----
+using Documenter
+using AsciiDocumenter
+using MyPackage
+
+# 1. Convert AsciiDoc -> Markdown
+for (root, dirs, files) in walkdir(joinpath(@__DIR__, "src"))
+    for file in files
+        if endswith(file, ".adoc")
+            path = joinpath(root, file)
+            println("Converting $path...")
+            
+            # Read AsciiDoc
+            adoc = read(path, String)
+            
+            # Parse and Convert
+            doc = AsciiDocumenter.parse(adoc)
+            md = AsciiDocumenter.to_markdown(doc)
+            
+            # Write Markdown file next to source
+            write(replace(path, ".adoc" => ".md"), md)
+        end
+    end
+end
+
+# 2. Run makedocs with .md files
+makedocs(
+    sitename = "MyPackage.jl",
+    modules = [MyPackage],
+    pages = [
+        "Home" => "index.md",
+        # Note: Refer to the generated .md files, not .adoc
+        "Guide" => "guide.md", 
+        "API" => "api.md"
+    ]
+)
+----
+
+== Writing for Documenter
+
+AsciiDocumenter.jl is designed to act as a transparent bridge. You write AsciiDoc, and it generates the Markdown signals that Documenter expects.
+
+=== Cross-References
+Do not use standard `<<id>>` internal links for cross-page references. Use the `link:` macro with `@ref`.
+
+* *Correct:* `link:@ref[See the Guide]`
+* *Correct:* `link:@ref#section-id[See Section]`
+* *Incorrect:* `<<section-id, See Section>>` (Only works on the same page)
+
+=== Math
+Use `stem` blocks.
+
+* *Inline:* `stem:[x^2]`
+* *Display:*
++
+[source,asciidoc]
+----
+[stem]
+++++
+x^2
+++++
+----
+
+=== Docstrings
+Use `[source,@docs]` blocks.
+
+[source,asciidoc]
+----
+[source,@docs]
+------
+MyPackage.my_function
+------
+----
+
+== File Structure
+
+Your `docs/src` folder can look exactly like a standard Documenter project, just with `.adoc` files.
+
+----
+docs/
+├── make.jl
+├── Project.toml
+└── src/
+    ├── index.adoc
+    ├── guide.adoc
+    └── api.adoc
+----
+
+The conversion script will generate sibling `.md` files (e.g., `index.md`) which Documenter will then process.
