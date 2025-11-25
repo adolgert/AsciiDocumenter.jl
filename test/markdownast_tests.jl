@@ -10,9 +10,9 @@ They ensure that:
 """
 
 using Test
-using AsciiDoc
+using AsciiDocumenter
 using MarkdownAST
-import AsciiDoc: parse, to_markdownast
+import AsciiDocumenter: parse, to_markdownast
 
 # Helper functions
 has_element_type(node, T) = node.element isa T
@@ -392,7 +392,7 @@ has_child_type(node, T) = any(c -> c.element isa T, node.children)
 
     @testset "API Validation" begin
         @testset "to_markdownast is exported" begin
-            @test isdefined(AsciiDoc, :to_markdownast)
+            @test isdefined(AsciiDocumenter, :to_markdownast)
         end
 
         @testset "Returns valid MarkdownAST.Node" begin

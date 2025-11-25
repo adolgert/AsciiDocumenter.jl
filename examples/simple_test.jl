@@ -1,10 +1,10 @@
 #!/usr/bin/env julia
-# Simple test to verify AsciiDoc.jl works
+# Simple test to verify AsciiDocumenter.jl works
 # Run with: julia --project examples/simple_test.jl
 
-using AsciiDoc
+using AsciiDocumenter
 
-println("Testing AsciiDoc.jl Parser\n")
+println("Testing AsciiDocumenter.jl Parser\n")
 println("=" ^ 60)
 
 # Test 1: Simple document

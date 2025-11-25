@@ -11,7 +11,7 @@ Documenter.jl works on Markdown files. To use AsciiDoc, you must convert your `.
 [source,julia]
 ----
 using Documenter
-using AsciiDoc
+using AsciiDocumenter
 using MyPackage
 
 # 1. Convert AsciiDoc -> Markdown
@@ -25,8 +25,8 @@ for (root, dirs, files) in walkdir(joinpath(@__DIR__, "src"))
             adoc = read(path, String)
             
             # Parse and Convert
-            doc = AsciiDoc.parse(adoc)
-            md = AsciiDoc.to_markdown(doc)
+            doc = AsciiDocumenter.parse(adoc)
+            md = AsciiDocumenter.to_markdown(doc)
             
             # Write Markdown file next to source
             write(replace(path, ".adoc" => ".md"), md)
@@ -49,7 +49,7 @@ makedocs(
 
 == Writing for Documenter
 
-AsciiDoc.jl is designed to act as a transparent bridge. You write AsciiDoc, and it generates the Markdown signals that Documenter expects.
+AsciiDocumenter.jl is designed to act as a transparent bridge. You write AsciiDoc, and it generates the Markdown signals that Documenter expects.
 
 === Cross-References
 Do not use standard `<<id>>` internal links for cross-page references. Use the `link:` macro with `@ref`.

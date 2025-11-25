@@ -1,13 +1,13 @@
 """
-Documenter.jl Integration for AsciiDoc.jl
+Documenter.jl Integration for AsciiDocumenter.jl
 
 This module provides conversion from AsciiDoc AST to MarkdownAST, enabling
-AsciiDoc.jl to work as a first-class plugin for Documenter.jl.
+AsciiDocumenter.jl to work as a first-class plugin for Documenter.jl.
 
 # Usage
 
 ```julia
-using AsciiDoc
+using AsciiDocumenter
 using MarkdownAST
 
 # Parse AsciiDoc document

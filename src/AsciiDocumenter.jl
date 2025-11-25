@@ -1,5 +1,5 @@
 """
-# AsciiDoc.jl
+# AsciiDocumenter.jl
 
 A parser for AsciiDoc documents in Julia.
 
@@ -12,7 +12,7 @@ This package provides:
 ## Basic Usage
 
 ```julia
-using AsciiDoc
+using AsciiDocumenter
 
 # Parse AsciiDoc text
 doc = parse(\"\"\"
@@ -39,7 +39,7 @@ html_output = convert(HTML, doc)
 ## For Documenter Integration
 
 ```julia
-using AsciiDoc
+using AsciiDocumenter
 
 # Read AsciiDoc file
 content = read("mydoc.adoc", String)
@@ -49,7 +49,7 @@ doc = parse(content)
 html = convert(HTML, doc)
 ```
 """
-module AsciiDoc
+module AsciiDocumenter
 
 # Include all source files (flat structure)
 include("ast.jl")

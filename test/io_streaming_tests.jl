@@ -10,8 +10,8 @@ They ensure that:
 """
 
 using Test
-using AsciiDoc
-import AsciiDoc: parse, to_html, to_latex
+using AsciiDocumenter
+import AsciiDocumenter: parse, to_html, to_latex
 
 @testset "PR2: IO Streaming Architecture" begin
 

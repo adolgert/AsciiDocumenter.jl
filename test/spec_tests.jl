@@ -10,9 +10,9 @@ Each test is tagged with its spec section for traceability.
 module SpecTests
 
 using Test
-using AsciiDoc
-# Explicitly import AsciiDoc's parse to avoid ambiguity with Base.parse
-import AsciiDoc: parse, convert, LaTeX, HTML, Document, Admonition, Text, Paragraph, Image, Table
+using AsciiDocumenter
+# Explicitly import AsciiDocumenter's parse to avoid ambiguity with Base.parse
+import AsciiDocumenter: parse, convert, LaTeX, HTML, Document, Admonition, Text, Paragraph, Image, Table
 
 # Test DSL for spec compliance
 """
@@ -718,7 +718,7 @@ end
 
     @test_feature "parse_asciidoc_file function" "parse_asciidoc_file(path)" begin
         filepath = joinpath(@__DIR__, "includes", "simple.adoc")
-        doc = AsciiDoc.parse_asciidoc_file(filepath)
+        doc = AsciiDocumenter.parse_asciidoc_file(filepath)
 
         @test !isempty(doc.blocks)
         @test doc.blocks[1] isa Header
@@ -827,7 +827,7 @@ end # module
 # Run the tests if this file is executed directly
 if abspath(PROGRAM_FILE) == @__FILE__
     using Test
-    include("../src/AsciiDoc.jl")
-    using .AsciiDoc
+    include("../src/AsciiDocumenter.jl")
+    using .AsciiDocumenter
     include(joinpath(@__DIR__, "spec_tests.jl"))
 end

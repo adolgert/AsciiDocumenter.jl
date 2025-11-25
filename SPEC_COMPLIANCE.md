@@ -235,7 +235,7 @@ When adding features from the spec:
 
 ## Version Tracking
 
-- **AsciiDoc.jl**: 0.1.0
+- **AsciiDocumenter.jl**: 0.1.0
 - **Target Spec**: AsciiDoc Language (in development at Eclipse Foundation)
 - **Reference Implementation**: Asciidoctor 2.x
 - **Julia Compatibility**: 1.10+

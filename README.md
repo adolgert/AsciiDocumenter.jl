@@ -1,4 +1,4 @@
-# AsciiDoc.jl
+# AsciiDocumenter.jl
 
 A pure Julia parser for AsciiDoc documents with multiple output backends.
 
@@ -15,20 +15,20 @@ A pure Julia parser for AsciiDoc documents with multiple output backends.
 
 ```julia
 using Pkg
-Pkg.add("AsciiDoc")
+Pkg.add("AsciiDocumenter")
 ```
 
 Or in development mode:
 
 ```julia
 using Pkg
-Pkg.develop(path="/path/to/asciidoc.jl")
+Pkg.develop(path="/path/to/asciidocumenter.jl")
 ```
 
 ## Quick Start
 
 ```julia
-using AsciiDoc
+using AsciiDocumenter
 
 # Parse AsciiDoc text
 doc = parse("""
@@ -106,7 +106,7 @@ html = asciidoc_to_html("= Title\n\nContent", standalone=true)
 ### Basic Document
 
 ```julia
-using AsciiDoc
+using AsciiDocumenter
 
 text = """
 = User Guide
@@ -138,7 +138,7 @@ html_output = convert(HTML, doc, standalone=true)
 ### For Documenter.jl Integration
 
 ```julia
-using AsciiDoc
+using AsciiDocumenter
 
 # Read AsciiDoc documentation file
 content = read("docs/mypage.adoc", String)
@@ -153,7 +153,7 @@ html = convert(HTML, doc)
 ### Working with the AST
 
 ```julia
-using AsciiDoc
+using AsciiDocumenter
 
 doc = parse("= Title\n\nParagraph with *bold*")
 
@@ -199,7 +199,7 @@ end
 
 ## Architecture
 
-AsciiDoc.jl follows a modular design:
+AsciiDocumenter.jl follows a modular design:
 
 1. **Parser** (`src/parser.jl`): Converts AsciiDoc text to AST
 2. **AST** (`src/ast.jl`): Type definitions for document structure
@@ -214,7 +214,7 @@ This architecture makes it easy to:
 
 ## Design Philosophy
 
-AsciiDoc.jl is designed with these principles:
+AsciiDocumenter.jl is designed with these principles:
 
 1. **Separation of Concerns**: Parsing, AST, and output generation are independent
 2. **Extensibility**: New backends can be added without modifying the parser
@@ -228,7 +228,7 @@ Run the test suite:
 
 ```julia
 using Pkg
-Pkg.test("AsciiDoc")
+Pkg.test("AsciiDocumenter")
 ```
 
 Or from the package directory:
