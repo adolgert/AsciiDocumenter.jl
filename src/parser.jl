@@ -206,6 +206,8 @@ function parse_asciidoc(text::String)
             push!(blocks, block)
         elseif (block = try_parse_block_quote(state)) !== nothing
             push!(blocks, block)
+        elseif (block = try_parse_admonition(state)) !== nothing
+            push!(blocks, block)
         elseif (block = try_parse_horizontal_rule(state)) !== nothing
             push!(blocks, block)
         elseif (block = try_parse_list(state)) !== nothing
@@ -331,6 +333,116 @@ function try_parse_block_quote(state::ParserState)
         inner_doc = parse_asciidoc(content_text)
 
         return BlockQuote(inner_doc.blocks)
+    end
+
+    return nothing
+end
+
+# Valid admonition types
+const ADMONITION_TYPES = ["NOTE", "TIP", "IMPORTANT", "WARNING", "CAUTION"]
+
+"""
+    try_parse_admonition(state::ParserState) -> Union{Admonition,Nothing}
+
+Try to parse an admonition block.
+
+Supports two forms:
+1. Inline form: `NOTE: This is a note`
+2. Block form:
+   ```
+   [NOTE]
+   ====
+   Content here
+   ====
+   ```
+"""
+function try_parse_admonition(state::ParserState)
+    line = peek_line(state)
+    line === nothing && return nothing
+
+    # Try block form first: [NOTE] or [TIP] etc.
+    block_match = match(r"^\[(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]$", strip(line))
+    if block_match !== nothing
+        admon_type = lowercase(String(block_match.captures[1]))
+        next_line!(state)
+
+        # Next line should be ==== delimiter
+        delim_line = peek_line(state)
+        if delim_line !== nothing && startswith(strip(delim_line), "====")
+            next_line!(state)
+
+            # Collect content until closing delimiter
+            content_lines = String[]
+            while (line = peek_line(state)) !== nothing
+                if startswith(strip(line), "====")
+                    next_line!(state)
+                    break
+                end
+                push!(content_lines, line)
+                next_line!(state)
+            end
+
+            # Parse the content as blocks
+            content_text = join(content_lines, '\n')
+            inner_doc = parse_asciidoc(content_text)
+
+            return Admonition(admon_type, inner_doc.blocks)
+        else
+            # No ==== delimiter, treat rest as single paragraph until blank line
+            content_lines = String[]
+            while (line = peek_line(state)) !== nothing
+                stripped = strip(line)
+                if isempty(stripped)
+                    break
+                end
+                push!(content_lines, line)
+                next_line!(state)
+            end
+
+            if !isempty(content_lines)
+                content_text = join(content_lines, " ")
+                return Admonition(admon_type, [Paragraph(parse_inline(content_text))])
+            else
+                return Admonition(admon_type, BlockNode[])
+            end
+        end
+    end
+
+    # Try inline form: NOTE: text or TIP: text etc.
+    inline_match = match(r"^(NOTE|TIP|IMPORTANT|WARNING|CAUTION):\s*(.*)$", line)
+    if inline_match !== nothing
+        admon_type = lowercase(String(inline_match.captures[1]))
+        content = String(inline_match.captures[2])
+        next_line!(state)
+
+        # Collect continuation lines (non-blank, not starting with special syntax)
+        while (line = peek_line(state)) !== nothing
+            stripped = strip(line)
+
+            # Stop at blank line
+            if isempty(stripped)
+                break
+            end
+
+            # Stop at block delimiters or special syntax
+            if startswith(line, "=") || startswith(line, "----") ||
+               startswith(line, "____") || startswith(line, "|===") ||
+               startswith(line, "[") ||
+               match(r"^\s*[\*\-]\s+", line) !== nothing ||
+               match(r"^\s*\.+\s+", line) !== nothing ||
+               match(r"^(NOTE|TIP|IMPORTANT|WARNING|CAUTION):", line) !== nothing
+                break
+            end
+
+            content *= " " * stripped
+            next_line!(state)
+        end
+
+        if !isempty(strip(content))
+            return Admonition(admon_type, [Paragraph(parse_inline(content))])
+        else
+            return Admonition(admon_type, BlockNode[])
+        end
     end
 
     return nothing

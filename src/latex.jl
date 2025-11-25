@@ -115,6 +115,33 @@ function to_latex(io::IO, node::BlockQuote)
 end
 
 """
+    to_latex(io::IO, node::Admonition) -> Nothing
+
+Convert an admonition to LaTeX, writing to IO.
+
+Uses a simple boxed format. For better styling, consider using
+packages like tcolorbox in your document preamble.
+"""
+function to_latex(io::IO, node::Admonition)
+    # Use a simple framed paragraph approach
+    # Note: requires no special packages, but tcolorbox would be better for production
+    title = uppercase(node.type[1:1]) * node.type[2:end]
+
+    print(io, "\\begin{quote}\n")
+    print(io, "\\textbf{", title, ":} ")
+
+    for (idx, block) in enumerate(node.content)
+        to_latex(io, block)
+        if idx < length(node.content)
+            write(io, "\n")
+        end
+    end
+
+    print(io, "\n\\end{quote}")
+    return nothing
+end
+
+"""
     to_latex(io::IO, node::UnorderedList) -> Nothing
 
 Convert an unordered list to LaTeX itemize environment, writing to IO.

@@ -12,7 +12,7 @@ module SpecTests
 using Test
 using AsciiDoc
 # Explicitly import AsciiDoc's parse to avoid ambiguity with Base.parse
-import AsciiDoc: parse, convert, LaTeX, HTML, Document
+import AsciiDoc: parse, convert, LaTeX, HTML, Document, Admonition
 
 # Test DSL for spec compliance
 """
@@ -110,6 +110,8 @@ function any_node(node, pred)
         return any(inline -> any_node(inline, pred), node.content)
     elseif node isa UnorderedList || node isa OrderedList
         return any(item -> any_node(item.content, pred), node.items)
+    elseif node isa Admonition
+        return any(block -> any_node(block, pred), node.content)
     end
 
     return false
@@ -311,11 +313,64 @@ end
 
 @spec_section "Admonitions" "https://docs.asciidoctor.org/asciidoc/latest/blocks/admonitions/" begin
 
-    @test_skip_unimplemented "NOTE admonition" "Not implemented"
-    @test_skip_unimplemented "TIP admonition" "Not implemented"
-    @test_skip_unimplemented "IMPORTANT admonition" "Not implemented"
-    @test_skip_unimplemented "WARNING admonition" "Not implemented"
-    @test_skip_unimplemented "CAUTION admonition" "Not implemented"
+    @test_feature "NOTE admonition (inline form)" "NOTE: text" begin
+        doc = parse("NOTE: This is a note.")
+        assert_first_block_type(doc, Admonition)
+        @test doc.blocks[1].type == "note"
+        @test !isempty(doc.blocks[1].content)
+    end
+
+    @test_feature "TIP admonition (inline form)" "TIP: text" begin
+        doc = parse("TIP: Here's a helpful tip.")
+        assert_first_block_type(doc, Admonition)
+        @test doc.blocks[1].type == "tip"
+    end
+
+    @test_feature "IMPORTANT admonition (inline form)" "IMPORTANT: text" begin
+        doc = parse("IMPORTANT: Don't forget this.")
+        assert_first_block_type(doc, Admonition)
+        @test doc.blocks[1].type == "important"
+    end
+
+    @test_feature "WARNING admonition (inline form)" "WARNING: text" begin
+        doc = parse("WARNING: Be careful here.")
+        assert_first_block_type(doc, Admonition)
+        @test doc.blocks[1].type == "warning"
+    end
+
+    @test_feature "CAUTION admonition (inline form)" "CAUTION: text" begin
+        doc = parse("CAUTION: This may cause issues.")
+        assert_first_block_type(doc, Admonition)
+        @test doc.blocks[1].type == "caution"
+    end
+
+    @test_feature "NOTE admonition (block form)" "[NOTE]\\n====\\ntext\\n====" begin
+        doc = parse("[NOTE]\n====\nThis is a note with *bold* text.\n====")
+        assert_first_block_type(doc, Admonition)
+        @test doc.blocks[1].type == "note"
+        @test !isempty(doc.blocks[1].content)
+    end
+
+    @test_feature "Admonition with multiple paragraphs" "[NOTE]\\n====\\npara1\\n\\npara2\\n====" begin
+        doc = parse("[NOTE]\n====\nFirst paragraph.\n\nSecond paragraph.\n====")
+        assert_first_block_type(doc, Admonition)
+        @test length(doc.blocks[1].content) == 2
+    end
+
+    @test_feature "Admonition HTML output" "NOTE: text -> HTML" begin
+        doc = parse("NOTE: This is a note.")
+        html = convert(HTML, doc)
+        @test contains(html, "admonition")
+        @test contains(html, "note")
+        @test contains(html, "Note")
+    end
+
+    @test_feature "Admonition LaTeX output" "NOTE: text -> LaTeX" begin
+        doc = parse("NOTE: This is a note.")
+        latex = convert(LaTeX, doc)
+        @test contains(latex, "Note")
+        @test contains(latex, "quote")
+    end
 end
 
 # ----------------------------------------------------------------------------
