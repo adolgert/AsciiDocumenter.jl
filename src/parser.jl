@@ -117,13 +117,20 @@ function _parse_inline_match(m::RegexMatch)
 end
 
 """
-    parse_inline(text::AbstractString, attributes::Dict{String,String}=Dict{String,String}()) -> Vector{InlineNode}
+    parse_inline(text::AbstractString) -> Vector{InlineNode}
+
+Parse inline formatting within text using a Regex-based approach.
+"""
+parse_inline(text::AbstractString) = parse_inline(text, Dict{String,String}())
+
+"""
+    parse_inline(text::AbstractString, attributes::Dict{String,String}) -> Vector{InlineNode}
 
 Parse inline formatting within text using a Regex-based approach.
 
 Optionally substitutes attribute references ({name}) with their values.
 """
-function parse_inline(text::AbstractString, attributes::Dict{String,String}=Dict{String,String}())
+function parse_inline(text::AbstractString, attributes::Dict{String,String})
     processed_text = text
     if !isempty(attributes)
         processed_text = substitute_attributes(text, attributes)
