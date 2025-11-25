@@ -20,7 +20,7 @@ count_children(node) = length(collect(node.children))
 find_element(node, T) = findfirst(c -> c.element isa T, collect(node.children))
 has_child_type(node, T) = any(c -> c.element isa T, node.children)
 
-@testset "PR3: Documenter.jl Integration" begin
+@testset "MarkdownAST Conversion" begin
 
     @testset "Basic Conversion" begin
         @testset "Empty document" begin

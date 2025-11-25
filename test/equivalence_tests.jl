@@ -203,7 +203,7 @@ end
 # Test Cases: Parallel AsciiDoc and Markdown
 # ============================================================================
 
-@testset "AsciiDoc ↔ Markdown Equivalence" begin
+@testset "AsciiDoc-Markdown Equivalence" begin
 
     @testset "Headers" begin
         # Equivalent content in both formats

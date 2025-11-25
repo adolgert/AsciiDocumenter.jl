@@ -125,7 +125,7 @@ end
 # SPECIFICATION TESTS
 # ============================================================================
 
-@testset "AsciiDoc Specification Compliance" begin
+@testset "Specification Compliance" begin
 
 # ----------------------------------------------------------------------------
 # Document Structure
@@ -771,15 +771,15 @@ end
 # Backend Output Tests
 # ----------------------------------------------------------------------------
 
-@testset "LaTeX Backend Compliance" begin
+@testset "LaTeX Output Correctness" begin
 
-    @testset "Section commands" begin
+    @testset "Section LaTeX Commands" begin
         doc = parse("= Title\n== Section")
         latex = convert(LaTeX, doc)
         @test contains(latex, "\\section")
     end
 
-    @testset "Text formatting" begin
+    @testset "Text Formatting LaTeX" begin
         doc = parse("*bold* _italic_ `code`")
         latex = convert(LaTeX, doc)
         @test contains(latex, "\\textbf")
@@ -796,7 +796,7 @@ end
     end
 end
 
-@testset "HTML Backend Compliance" begin
+@testset "HTML Output Correctness" begin
 
     @testset "Semantic HTML5" begin
         doc = parse("= Title\n\nParagraph")
@@ -805,7 +805,7 @@ end
         @test contains(html, "<p>")
     end
 
-    @testset "Standalone mode" begin
+    @testset "HTML Standalone Mode" begin
         doc = parse("= Title")
         html = convert(HTML, doc, standalone=true)
         @test contains(html, "<!DOCTYPE html>")
@@ -813,14 +813,14 @@ end
         @test contains(html, "</html>")
     end
 
-    @testset "Code block language classes" begin
+    @testset "Code Block Language Classes" begin
         doc = parse("[source,julia]\n----\ncode\n----")
         html = convert(HTML, doc)
         @test contains(html, "language-julia")
     end
 end
 
-end # @testset "AsciiDoc Specification Compliance"
+end # @testset "Specification Compliance"
 
 end # module
 
