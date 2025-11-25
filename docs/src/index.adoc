@@ -1,4 +1,4 @@
-= AsciiDoc.jl
+= AsciiDocumenter.jl
 
 Convert AsciiDoc to Markdown for use with link:https://documenter.juliadocs.org/[Documenter.jl].
 
@@ -7,15 +7,15 @@ Convert AsciiDoc to Markdown for use with link:https://documenter.juliadocs.org/
 [source,julia]
 ----
 using Pkg
-Pkg.add("AsciiDoc")
+Pkg.add("AsciiDocumenter")
 ----
 
 [source,julia]
 ----
-using AsciiDoc
+using AsciiDocumenter
 
 # Parse AsciiDoc
-doc = AsciiDoc.parse("""
+doc = AsciiDocumenter.parse("""
 = My Document
 
 This is *bold* text.
@@ -24,7 +24,7 @@ See link:@ref[My Function].
 """)
 
 # Convert to Markdown string for Documenter
-md = AsciiDoc.to_markdown(doc)
+md = AsciiDocumenter.to_markdown(doc)
 ----
 
 == Documentation

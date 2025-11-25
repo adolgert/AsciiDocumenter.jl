@@ -10,9 +10,9 @@ They ensure that:
 """
 
 using Test
-using AsciiDoc
+using AsciiDocumenter
 using MarkdownAST
-import AsciiDoc: parse, to_markdownast
+import AsciiDocumenter: parse, to_markdownast
 
 # Helper functions
 has_element_type(node, T) = node.element isa T
@@ -20,7 +20,7 @@ count_children(node) = length(collect(node.children))
 find_element(node, T) = findfirst(c -> c.element isa T, collect(node.children))
 has_child_type(node, T) = any(c -> c.element isa T, node.children)
 
-@testset "PR3: Documenter.jl Integration" begin
+@testset "MarkdownAST Conversion" begin
 
     @testset "Basic Conversion" begin
         @testset "Empty document" begin
@@ -392,7 +392,7 @@ has_child_type(node, T) = any(c -> c.element isa T, node.children)
 
     @testset "API Validation" begin
         @testset "to_markdownast is exported" begin
-            @test isdefined(AsciiDoc, :to_markdownast)
+            @test isdefined(AsciiDocumenter, :to_markdownast)
         end
 
         @testset "Returns valid MarkdownAST.Node" begin

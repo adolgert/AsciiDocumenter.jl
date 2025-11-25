@@ -6,7 +6,7 @@ This module provides functions to parse AsciiDoc text into an Abstract Syntax Tr
 
 export parse_asciidoc, parse_asciidoc_file, parse_inline
 
-# Order matters in the regex alternation; more specific patterns must come first.
+# More specific patterns must come first in the regex alternation because the regex engine matches left to right.
 const INLINE_TOKEN_PATTERN = Regex(
     raw"""
     # Cross-reference: <<target,text>> or <<target>>
@@ -111,7 +111,7 @@ function _parse_inline_match(m::RegexMatch)
         content = strip(m[:superscript], '^')
         return Superscript(parse_inline(String(content)))
     end
-    # Fallback for unmatched patterns, which indicates the regex is incomplete.
+    # This fallback indicates that the regex pattern is incomplete and failed to match all expected patterns.
     @warn "Failed to parse inline match: $(m.match). Returning as plain text."
     return Text(String(m.match))
 end
@@ -172,35 +172,34 @@ These are automatically available in all documents.
 """
 function _builtin_attributes()
     Dict{String,String}(
-        # Special characters
-        "nbsp" => "\u00A0",      # Non-breaking space
-        "sp" => " ",              # Space
-        "empty" => "",            # Empty string
-        "blank" => "",            # Blank (same as empty)
-        "amp" => "&",             # Ampersand
-        "lt" => "<",              # Less than
-        "gt" => ">",              # Greater than
-        "quot" => "\"",           # Quotation mark
-        "apos" => "'",            # Apostrophe
-        "brvbar" => "¦",          # Broken vertical bar
-        "vbar" => "|",            # Vertical bar
-        "zwsp" => "\u200B",       # Zero-width space
-        "wj" => "\u2060",         # Word joiner
-        "deg" => "°",             # Degree symbol
-        "plus" => "+",            # Plus sign
-        "caret" => "^",           # Caret
-        "tilde" => "~",           # Tilde
-        "backslash" => "\\",      # Backslash
-        "backtick" => "`",        # Backtick
-        "startsb" => "[",         # Left square bracket
-        "endsb" => "]",           # Right square bracket
-        "lsquo" => "\u2018",      # Left single quote '
-        "rsquo" => "\u2019",      # Right single quote '
-        "ldquo" => "\u201C",      # Left double quote "
-        "rdquo" => "\u201D",      # Right double quote "
-        "two-colons" => "::",     # Double colon
-        "two-semicolons" => ";;", # Double semicolon
-        "cpp" => "C++",           # C++
+        "nbsp" => "\u00A0",
+        "sp" => " ",
+        "empty" => "",
+        "blank" => "",
+        "amp" => "&",
+        "lt" => "<",
+        "gt" => ">",
+        "quot" => "\"",
+        "apos" => "'",
+        "brvbar" => "¦",
+        "vbar" => "|",
+        "zwsp" => "\u200B",
+        "wj" => "\u2060",
+        "deg" => "°",
+        "plus" => "+",
+        "caret" => "^",
+        "tilde" => "~",
+        "backslash" => "\\",
+        "backtick" => "`",
+        "startsb" => "[",
+        "endsb" => "]",
+        "lsquo" => "\u2018",
+        "rsquo" => "\u2019",
+        "ldquo" => "\u201C",
+        "rdquo" => "\u201D",
+        "two-colons" => "::",
+        "two-semicolons" => ";;",
+        "cpp" => "C++"
     )
 end
 
@@ -214,7 +213,7 @@ mutable struct ParserState
     pos::Int
     attributes::Dict{String,String}
     base_path::String
-    include_stack::Vector{String}  # Prevents circular includes.
+    include_stack::Vector{String}
 end
 
 ParserState(text::String) = ParserState(split(text, '\n'), 1, _builtin_attributes(), pwd(), String[])
@@ -272,14 +271,12 @@ function try_skip_comment(state::ParserState)
 
     stripped = strip(line)
 
-    # Block comment: //// ... ////
     if stripped == "////"
-        next_line!(state)  # consume opening ////
+        next_line!(state)
 
-        # Skip until closing ////
         while (line = peek_line(state)) !== nothing
             if strip(line) == "////"
-                next_line!(state)  # consume closing ////
+                next_line!(state)
                 break
             end
             next_line!(state)
@@ -287,7 +284,6 @@ function try_skip_comment(state::ParserState)
         return true
     end
 
-    # Single-line comment: // (but not //// which is block delimiter)
     if startswith(stripped, "//") && !startswith(stripped, "////")
         next_line!(state)
         return true
@@ -336,7 +332,7 @@ function _parse_asciidoc_state(state::ParserState)
         line = peek_line(state)
         line === nothing && break
 
-        # Skip comments first (they produce no output)
+        # Comments produce no output and must be skipped before attempting to parse other constructs.
         if try_skip_comment(state)
             continue
         elseif try_parse_attribute_definition(state)
@@ -364,7 +360,6 @@ function _parse_asciidoc_state(state::ParserState)
         elseif (block = try_parse_paragraph(state)) !== nothing
             push!(blocks, block)
         else
-            # Skip unparseable line
             next_line!(state)
         end
     end
@@ -419,17 +414,11 @@ Generate an ID from header text following AsciiDoc conventions.
 - Prefixes with underscore if starting with a digit
 """
 function generate_header_id(text::AbstractString)
-    # Remove inline markup symbols for cleaner IDs
     clean = replace(text, r"[*_`~^]" => "")
-    # Convert to lowercase
     clean = lowercase(clean)
-    # Replace non-alphanumeric chars with hyphens
     clean = replace(clean, r"[^a-z0-9]+" => "-")
-    # Remove leading/trailing hyphens
     clean = strip(clean, '-')
-    # Handle empty result
     isempty(clean) && return "_"
-    # Prefix with underscore if starting with digit
     if isdigit(clean[1])
         clean = "_" * clean
     end
@@ -449,7 +438,6 @@ function try_parse_header(state::ParserState)
     if m !== nothing
         level = length(m.captures[1])
         text = m.captures[2]
-        # Use explicit ID if provided, otherwise auto-generate
         id = if m.captures[3] !== nothing
             String(m.captures[3])
         else
@@ -516,20 +504,16 @@ function try_parse_code_block(state::ParserState)
             next_line!(state)
         end
 
-        # Parse callout definitions after the code block
         callouts = _parse_callout_definitions(state)
 
         return CodeBlock(join(code_lines, '\n'), language, Dict{String,String}(), callouts)
     end
 
-    # Parse [source,...] with options
-    # Allow @-prefixed languages for Documenter.jl blocks (@docs, @example, @repl, etc.)
     m = match(r"^\[source(?:,\s*(@?\w+[\w\s]*))?((?:,\s*\w+|%\w+)*)\]$", line)
     if m !== nothing
         language = m.captures[1] !== nothing ? String(m.captures[1]) : ""
         options_str = m.captures[2] !== nothing ? String(m.captures[2]) : ""
 
-        # Parse attributes from options
         attrs = Dict{String,String}()
         if contains(options_str, "linenums") || contains(options_str, "%linenums")
             attrs["linenums"] = "true"
@@ -551,7 +535,6 @@ function try_parse_code_block(state::ParserState)
                 next_line!(state)
             end
 
-            # Parse callout definitions after the code block
             callouts = _parse_callout_definitions(state)
 
             return CodeBlock(join(code_lines, '\n'), language, attrs, callouts)
@@ -582,13 +565,12 @@ function try_parse_passthrough_block(state::ParserState)
             next_line_content = state.lines[state.pos + 1]
             if startswith(next_line_content, "++++")
                 attr_str = attr_match.captures[1]
-                # If simple style like [stem], treat as style attribute
                 if !contains(attr_str, "=") && !contains(attr_str, ",")
                     attrs["style"] = String(attr_str)
                 else
                     _parse_block_attributes!(attrs, String(attr_str))
                 end
-                next_line!(state) # consume attributes
+                next_line!(state)
                 line = peek_line(state)
             end
         end
@@ -671,7 +653,6 @@ function try_parse_admonition(state::ParserState)
         admon_type = lowercase(String(block_match.captures[1]))
         next_line!(state)
 
-        # Check for optional title (.Title syntax)
         title = ""
         next_line_content = peek_line(state)
         if next_line_content !== nothing
@@ -701,7 +682,6 @@ function try_parse_admonition(state::ParserState)
 
             return Admonition(admon_type, inner_doc.blocks, title)
         else
-            # No delimiter means single paragraph until blank line.
             content_lines = String[]
             while (line = peek_line(state)) !== nothing
                 stripped = strip(line)

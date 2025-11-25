@@ -10,10 +10,10 @@ They ensure that:
 """
 
 using Test
-using AsciiDoc
-import AsciiDoc: parse, to_html, to_latex
+using AsciiDocumenter
+import AsciiDocumenter: parse, to_html, to_latex
 
-@testset "PR2: IO Streaming Architecture" begin
+@testset "IO Streaming Architecture" begin
 
     # Sample document for testing
     sample_doc = parse("""
@@ -32,8 +32,8 @@ import AsciiDoc: parse, to_html, to_latex
     ----
     """)
 
-    @testset "HTML - IO Streaming API" begin
-        @testset "IOBuffer streaming" begin
+    @testset "HTML IO Streaming" begin
+        @testset "HTML IOBuffer Streaming" begin
             # Test that we can write to an IOBuffer
             io = IOBuffer()
             to_html(io, sample_doc)
@@ -45,7 +45,7 @@ import AsciiDoc: parse, to_html, to_latex
             @test contains(result, "<em>italic</em>")
         end
 
-        @testset "Backward compatibility - identical output" begin
+        @testset "HTML Backward Compatibility" begin
             # IO version
             io = IOBuffer()
             to_html(io, sample_doc)
@@ -58,7 +58,7 @@ import AsciiDoc: parse, to_html, to_latex
             @test io_result == wrapper_result
         end
 
-        @testset "Standalone mode via IO" begin
+        @testset "HTML Standalone via IO" begin
             io = IOBuffer()
             to_html(io, sample_doc; standalone=true)
             result = String(take!(io))
@@ -69,7 +69,7 @@ import AsciiDoc: parse, to_html, to_latex
             @test contains(result, "<body>")
         end
 
-        @testset "File streaming" begin
+        @testset "HTML File Streaming" begin
             # Test that we can write directly to a file
             mktempdir() do tmpdir
                 filepath = joinpath(tmpdir, "test.html")
@@ -86,7 +86,7 @@ import AsciiDoc: parse, to_html, to_latex
             end
         end
 
-        @testset "Individual node streaming" begin
+        @testset "HTML Individual Node Streaming" begin
             # Test that we can render individual nodes
             doc = parse("This is *bold* text.")
             para = doc.blocks[1]
@@ -101,8 +101,8 @@ import AsciiDoc: parse, to_html, to_latex
         end
     end
 
-    @testset "LaTeX - IO Streaming API" begin
-        @testset "IOBuffer streaming" begin
+    @testset "LaTeX IO Streaming" begin
+        @testset "LaTeX IOBuffer Streaming" begin
             io = IOBuffer()
             to_latex(io, sample_doc)
             result = String(take!(io))
@@ -113,7 +113,7 @@ import AsciiDoc: parse, to_html, to_latex
             @test contains(result, "\\textit{italic}")
         end
 
-        @testset "Backward compatibility - identical output" begin
+        @testset "LaTeX Backward Compatibility" begin
             # IO version
             io = IOBuffer()
             to_latex(io, sample_doc)
@@ -126,7 +126,7 @@ import AsciiDoc: parse, to_html, to_latex
             @test io_result == wrapper_result
         end
 
-        @testset "File streaming" begin
+        @testset "LaTeX File Streaming" begin
             mktempdir() do tmpdir
                 filepath = joinpath(tmpdir, "test.tex")
 
@@ -141,7 +141,7 @@ import AsciiDoc: parse, to_html, to_latex
             end
         end
 
-        @testset "Individual node streaming" begin
+        @testset "LaTeX Individual Node Streaming" begin
             doc = parse("This is *bold* text.")
             para = doc.blocks[1]
 
@@ -153,7 +153,7 @@ import AsciiDoc: parse, to_html, to_latex
         end
     end
 
-    @testset "No String Concatenation in Rendering" begin
+    @testset "Memory Efficiency - No String Concat" begin
         # This is a conceptual test - in practice, we'd need to instrument
         # the code or use allocation tracking to verify this
         # For now, we verify the pattern is correct by checking the API

@@ -1,13 +1,13 @@
 """
-Documenter.jl Integration for AsciiDoc.jl
+Documenter.jl Integration for AsciiDocumenter.jl
 
 This module provides conversion from AsciiDoc AST to MarkdownAST, enabling
-AsciiDoc.jl to work as a first-class plugin for Documenter.jl.
+AsciiDocumenter.jl to work as a first-class plugin for Documenter.jl.
 
 # Usage
 
 ```julia
-using AsciiDoc
+using AsciiDocumenter
 using MarkdownAST
 
 # Parse AsciiDoc document
@@ -34,10 +34,8 @@ Convert an AsciiDoc document to MarkdownAST representation.
 This enables integration with Documenter.jl and other tools that consume MarkdownAST.
 """
 function to_markdownast(doc::Document)
-    # Create root document node
     root = Node(MarkdownAST.Document())
 
-    # Convert all block nodes
     for block in doc.blocks
         child = convert_block(block)
         if child !== nothing
@@ -112,7 +110,6 @@ end
 Convert AsciiDoc CodeBlock to MarkdownAST CodeBlock.
 """
 function convert_codeblock(node::CodeBlock)
-    # MarkdownAST CodeBlock stores info (language) and code separately
     code_node = Node(MarkdownAST.CodeBlock(node.language, node.content))
     return code_node
 end
@@ -124,12 +121,10 @@ Convert AsciiDoc PassthroughBlock to MarkdownAST DisplayMath or HTMLBlock.
 """
 function convert_passthrough_block(node::PassthroughBlock)
     style = get(node.attributes, "style", "")
-    # Handle math blocks
     if style == "stem" || style == "latexmath" || style == "asciimath"
         return Node(MarkdownAST.DisplayMath(node.content))
     end
-    
-    # Default to HTML block for generic passthrough
+
     return Node(MarkdownAST.HTMLBlock(node.content))
 end
 
@@ -148,8 +143,7 @@ function convert_blockquote(node::BlockQuote)
         end
     end
 
-    # Note: MarkdownAST doesn't have native attribution support
-    # If attribution exists, add it as a paragraph
+    # MarkdownAST does not have native attribution support, so we add it as a separate paragraph when present.
     if !isempty(node.attribution)
         attr_para = Node(MarkdownAST.Paragraph())
         push!(attr_para.children, Node(MarkdownAST.Text("— $(node.attribution)")))
@@ -181,7 +175,6 @@ function convert_admonition(node::Admonition)
     )
 
     category = get(category_map, node.type, "note")
-    # Use custom title if provided, otherwise default to capitalized type
     title = isempty(node.title) ? uppercase(node.type[1:1]) * node.type[2:end] : node.title
 
     admon_node = Node(MarkdownAST.Admonition(category, title))
@@ -243,7 +236,7 @@ so we wrap inline content in a Paragraph.
 function convert_list_item(item::ListItem)
     item_node = Node(MarkdownAST.Item())
 
-    # MarkdownAST Item nodes can only contain block-level elements.
+    # MarkdownAST Item nodes can only contain block-level elements, so inline content must be wrapped in a paragraph.
     para = Node(MarkdownAST.Paragraph())
     for inline in item.content
         child = convert_inline(inline)
@@ -341,7 +334,6 @@ function convert_table(node::Table)
             row_node = Node(MarkdownAST.TableRow())
 
             for (col_idx, cell) in enumerate(row.cells)
-                # TableCell(align, is_header_cell, column_index)
                 cell_node = Node(MarkdownAST.TableCell(:left, true, col_idx))
 
                 for inline in cell.content
@@ -534,7 +526,6 @@ function convert_link(node::Link)
             end
         end
     else
-        # Use URL as text if no text provided
         push!(link.children, Node(MarkdownAST.Text(node.url)))
     end
 
@@ -575,7 +566,6 @@ function convert_crossref(node::CrossRef)
             end
         end
     else
-        # Use target as text if no text provided
         push!(link.children, Node(MarkdownAST.Text(node.target)))
     end
 
@@ -746,7 +736,6 @@ function render_md_element(io::IO, elem::MarkdownAST.Table, node::MarkdownAST.No
         return
     end
 
-    # Render header row
     header_row = rows[1]
     print(io, "|")
     for cell in header_row.children
@@ -758,11 +747,9 @@ function render_md_element(io::IO, elem::MarkdownAST.Table, node::MarkdownAST.No
     end
     println(io)
 
-    # Separator
     ncols = length(collect(header_row.children))
     println(io, "|", join(fill("---", ncols), "|"), "|")
 
-    # Data rows
     for row in rows[2:end]
         print(io, "|")
         for cell in row.children

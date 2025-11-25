@@ -77,7 +77,6 @@ function to_latex(io::IO, node::CodeBlock)
         write(io, node.content)
         print(io, "\n\\end{verbatim}")
     else
-        # Use lstlisting with options
         options = String[]
         if !isempty(node.language)
             push!(options, "language=" * node.language)
@@ -95,7 +94,6 @@ function to_latex(io::IO, node::CodeBlock)
         print(io, "\n\\end{lstlisting}")
     end
 
-    # Render callout definitions if present
     if !isempty(node.callouts)
         print(io, "\n\\begin{description}")
         for num in sort(collect(keys(node.callouts)))
@@ -138,7 +136,6 @@ packages like tcolorbox in your document preamble.
 Uses custom title if provided, otherwise defaults to capitalized type.
 """
 function to_latex(io::IO, node::Admonition)
-    # Use custom title if provided, otherwise default to capitalized type
     title = isempty(node.title) ? uppercase(node.type[1:1]) * node.type[2:end] : node.title
 
     print(io, "\\begin{quote}\n")
@@ -191,7 +188,6 @@ Supports `start` attribute for custom starting number.
 function to_latex(io::IO, node::OrderedList)
     print(io, "\\begin{enumerate}\n")
 
-    # Handle custom start number
     if haskey(node.attributes, "start")
         start_val = tryparse(Int, node.attributes["start"])
         if start_val !== nothing && start_val != 1
@@ -257,10 +253,9 @@ function _parse_latex_column_specs(cols::String, ncols::Int)
         elseif startswith(spec, ">")
             push!(specs, 'r')
         else
-            push!(specs, 'l')  # Default to left
+            push!(specs, 'l')
         end
     end
-    # Pad with 'l' if not enough specs
     while length(specs) < ncols
         push!(specs, 'l')
     end
@@ -281,7 +276,6 @@ function to_latex(io::IO, node::Table)
 
     ncols = length(node.rows[1].cells)
 
-    # Parse column alignments from cols attribute
     if haskey(node.attributes, "cols")
         col_spec = _parse_latex_column_specs(node.attributes["cols"], ncols)
     else
@@ -292,7 +286,6 @@ function to_latex(io::IO, node::Table)
 
     for (idx, row) in enumerate(node.rows)
         if row.is_header || (idx == 1 && !any(r -> r.is_header, node.rows))
-            # First row or explicit header
             for (cell_idx, cell) in enumerate(row.cells)
                 colspan = get(cell.attributes, "colspan", "")
 
@@ -548,7 +541,7 @@ function escape_latex(text::String)
     ]
 
     result = text
-    # Backslash must be replaced first to avoid double-escaping.
+    # Backslash must be replaced first because replacing it after other characters would double-escape those replacements.
     result = replace(result, "\\" => "\\textbackslash{}")
 
     for (char, replacement) in replacements[2:end]

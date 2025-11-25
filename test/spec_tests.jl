@@ -10,9 +10,9 @@ Each test is tagged with its spec section for traceability.
 module SpecTests
 
 using Test
-using AsciiDoc
-# Explicitly import AsciiDoc's parse to avoid ambiguity with Base.parse
-import AsciiDoc: parse, convert, LaTeX, HTML, Document, Admonition, Text, Paragraph, Image, Table
+using AsciiDocumenter
+# Explicitly import AsciiDocumenter's parse to avoid ambiguity with Base.parse
+import AsciiDocumenter: parse, convert, LaTeX, HTML, Document, Admonition, Text, Paragraph, Image, Table
 
 # Test DSL for spec compliance
 """
@@ -125,7 +125,7 @@ end
 # SPECIFICATION TESTS
 # ============================================================================
 
-@testset "AsciiDoc Specification Compliance" begin
+@testset "Specification Compliance" begin
 
 # ----------------------------------------------------------------------------
 # Document Structure
@@ -718,7 +718,7 @@ end
 
     @test_feature "parse_asciidoc_file function" "parse_asciidoc_file(path)" begin
         filepath = joinpath(@__DIR__, "includes", "simple.adoc")
-        doc = AsciiDoc.parse_asciidoc_file(filepath)
+        doc = AsciiDocumenter.parse_asciidoc_file(filepath)
 
         @test !isempty(doc.blocks)
         @test doc.blocks[1] isa Header
@@ -771,15 +771,15 @@ end
 # Backend Output Tests
 # ----------------------------------------------------------------------------
 
-@testset "LaTeX Backend Compliance" begin
+@testset "LaTeX Output Correctness" begin
 
-    @testset "Section commands" begin
+    @testset "Section LaTeX Commands" begin
         doc = parse("= Title\n== Section")
         latex = convert(LaTeX, doc)
         @test contains(latex, "\\section")
     end
 
-    @testset "Text formatting" begin
+    @testset "Text Formatting LaTeX" begin
         doc = parse("*bold* _italic_ `code`")
         latex = convert(LaTeX, doc)
         @test contains(latex, "\\textbf")
@@ -796,7 +796,7 @@ end
     end
 end
 
-@testset "HTML Backend Compliance" begin
+@testset "HTML Output Correctness" begin
 
     @testset "Semantic HTML5" begin
         doc = parse("= Title\n\nParagraph")
@@ -805,7 +805,7 @@ end
         @test contains(html, "<p>")
     end
 
-    @testset "Standalone mode" begin
+    @testset "HTML Standalone Mode" begin
         doc = parse("= Title")
         html = convert(HTML, doc, standalone=true)
         @test contains(html, "<!DOCTYPE html>")
@@ -813,21 +813,21 @@ end
         @test contains(html, "</html>")
     end
 
-    @testset "Code block language classes" begin
+    @testset "Code Block Language Classes" begin
         doc = parse("[source,julia]\n----\ncode\n----")
         html = convert(HTML, doc)
         @test contains(html, "language-julia")
     end
 end
 
-end # @testset "AsciiDoc Specification Compliance"
+end # @testset "Specification Compliance"
 
 end # module
 
 # Run the tests if this file is executed directly
 if abspath(PROGRAM_FILE) == @__FILE__
     using Test
-    include("../src/AsciiDoc.jl")
-    using .AsciiDoc
+    include("../src/AsciiDocumenter.jl")
+    using .AsciiDocumenter
     include(joinpath(@__DIR__, "spec_tests.jl"))
 end

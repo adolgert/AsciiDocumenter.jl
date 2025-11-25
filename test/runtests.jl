@@ -1,7 +1,7 @@
 using Test
-using AsciiDoc
-# Explicitly import AsciiDoc's parse to avoid ambiguity with Base.parse
-import AsciiDoc: parse, convert, LaTeX, HTML
+using AsciiDocumenter
+# Explicitly import AsciiDocumenter's parse to avoid ambiguity with Base.parse
+import AsciiDocumenter: parse, convert, LaTeX, HTML
 
 # Run specification compliance tests
 include("spec_tests.jl")
@@ -12,7 +12,7 @@ include("io_streaming_tests.jl")
 # Run MarkdownAST integration tests (PR3)
 include("markdownast_tests.jl")
 
-@testset "AsciiDoc.jl - Legacy Tests" begin
+@testset "Parser and Backend Integration" begin
     @testset "Headers" begin
         doc = parse("= Level 1 Header")
         @test length(doc.blocks) == 1
@@ -172,7 +172,7 @@ include("markdownast_tests.jl")
         @test any(n -> n isa CrossRef, para.content)
     end
 
-    @testset "LaTeX Conversion" begin
+    @testset "LaTeX Backend Output" begin
         doc = parse("= Title\n\nThis is *bold*.")
         latex = convert(LaTeX, doc)
 
@@ -191,7 +191,7 @@ include("markdownast_tests.jl")
         @test contains(latex, "language=julia")
     end
 
-    @testset "HTML Conversion" begin
+    @testset "HTML Backend Output" begin
         doc = parse("= Title\n\nThis is *bold*.")
         html = convert(HTML, doc)
 
@@ -216,7 +216,7 @@ include("markdownast_tests.jl")
         @test contains(html, "<!DOCTYPE html>")
     end
 
-    @testset "Complex Document" begin
+    @testset "Complex Document Parsing" begin
         text = """
         = My Document
 

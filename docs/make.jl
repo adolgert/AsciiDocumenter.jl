@@ -1,5 +1,5 @@
 using Documenter
-using AsciiDoc
+using AsciiDocumenter
 
 # Pre-processing: Convert AsciiDoc files to Markdown
 # This allows us to write documentation in .adoc and have it compiled to .md
@@ -16,8 +16,8 @@ if isdir(source_dir)
                 try
                     # Read, Parse, Convert
                     adoc_content = read(path, String)
-                    doc = AsciiDoc.parse(adoc_content)
-                    md_content = AsciiDoc.to_markdown(doc)
+                    doc = AsciiDocumenter.parse(adoc_content)
+                    md_content = AsciiDocumenter.to_markdown(doc)
                     
                     # Write to .md
                     md_path = replace(path, ".adoc" => ".md")
@@ -32,9 +32,9 @@ if isdir(source_dir)
 end
 
 makedocs(
-    sitename = "AsciiDoc.jl",
+    sitename = "AsciiDocumenter.jl",
     authors = "Andrew Dolgert <github@dolgert.com",
-    modules = [AsciiDoc],
+    modules = [AsciiDocumenter],
     pages = [
         "Home" => "index.md",
         "Guide" => "guide.md",
@@ -48,7 +48,7 @@ makedocs(
 )
 deploydocs(;
     target="build",
-    repo="github.com/adolgert/AsciiDoc.jl.git",
+    repo="github.com/adolgert/AsciiDocumenter.jl.git",
     devbranch="main",
     branch="gh-pages"
 )

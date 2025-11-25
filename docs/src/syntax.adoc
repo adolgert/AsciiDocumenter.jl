@@ -25,7 +25,7 @@ See the link:../guide.md[User Guide].
 
 === Math
 
-AsciiDoc.jl supports `stem` (Science, Technology, Engineering, Math) blocks, which map directly to Documenter's math support.
+AsciiDocumenter.jl supports `stem` (Science, Technology, Engineering, Math) blocks, which map directly to Documenter's math support.
 
 *Inline Math:*
 

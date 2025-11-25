@@ -1,6 +1,6 @@
-# AsciiDoc.jl Test Suite
+# AsciiDocumenter.jl Test Suite
 
-This directory contains the test suite for AsciiDoc.jl, organized to ensure comprehensive coverage and spec compliance.
+This directory contains the test suite for AsciiDocumenter.jl, organized to ensure comprehensive coverage and spec compliance.
 
 ## Test Structure
 
@@ -74,7 +74,7 @@ This generates `COMPLIANCE_REPORT.md` with detailed statistics.
 
 ```julia
 using Pkg
-Pkg.test("AsciiDoc")
+Pkg.test("AsciiDocumenter")
 ```
 
 Or from command line:

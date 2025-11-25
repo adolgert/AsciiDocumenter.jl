@@ -1,4 +1,4 @@
-name = "AsciiDoc"
+name = "AsciiDocumenter"
 uuid = "8d64b9e2-4e3f-4a7d-9c8f-1e2d3f4a5b6c"
 version = "0.1.0"
 authors = ["Your Name <your.email@example.com>"]
