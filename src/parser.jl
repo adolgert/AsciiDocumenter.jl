@@ -4,14 +4,9 @@ Parser for AsciiDoc documents.
 This module provides functions to parse AsciiDoc text into an Abstract Syntax Tree.
 """
 
-# Exported functions
 export parse_asciidoc, parse_asciidoc_file, parse_inline
 
-# --- Inline Parsing Regexes and Helpers ---
-
-# IMPORTANT: Order matters in the Regex alternation (from left to right for precedence).
-# More specific/longer patterns should generally come first.
-# Also, non-greedy quantifiers (`*?`, `+?`) are crucial for correct matching.
+# Order matters in the regex alternation; more specific patterns must come first.
 const INLINE_TOKEN_PATTERN = Regex(
     raw"""
     # Cross-reference: <<target,text>> or <<target>>
@@ -38,7 +33,7 @@ const INLINE_TOKEN_PATTERN = Regex(
     # Superscript: ^text^ (must not start/end with space, not empty)
     (?<superscript>\^(?!\s)([^\\^\s](?:[^\\^]*?[^\\^\s])?)\^)
     """,
-    "x" # Extended mode for comments and whitespace, for readability
+    "x"  # Extended mode allows comments and whitespace in the pattern.
 )
 
 """
@@ -48,13 +43,7 @@ Helper function to convert a RegexMatch for an inline token into an InlineNode.
 Recursively calls `parse_inline` for nested content.
 """
 function _parse_inline_match(m::RegexMatch)
-    # Check named capture groups using m[Symbol("name")]
-    # Then, extract content based on the matched group.
-
     if m[:xref] !== nothing
-        # Re-match the full xref string to extract its parts reliably
-        # The main INLINE_TOKEN_PATTERN captures the whole <<...>> as 'xref'
-        # We need to extract target and optional text from m[Symbol("xref")]
         sub_m = match(r"^<<([^,>]+?)(?:,([^>]+?))?>>$", m[:xref])
         if sub_m !== nothing
             target = String(sub_m.captures[1])
@@ -84,7 +73,6 @@ function _parse_inline_match(m::RegexMatch)
             end
         end
     elseif m[:monospace] !== nothing
-        # For simple delimited tokens, just strip the delimiters
         content = strip(m[:monospace], '`')
         return Monospace([Text(String(content))]) # Text constructor takes String
     elseif m[:bold] !== nothing
@@ -100,9 +88,9 @@ function _parse_inline_match(m::RegexMatch)
         content = strip(m[:superscript], '^')
         return Superscript(parse_inline(String(content)))
     end
-    # This should ideally not be reached if INLINE_TOKEN_PATTERN is exhaustive
+    # Fallback for unmatched patterns, which indicates the regex is incomplete.
     @warn "Failed to parse inline match: $(m.match). Returning as plain text."
-    return Text(String(m.match)) # Fallback, should convert to String
+    return Text(String(m.match))
 end
 
 """
@@ -113,30 +101,23 @@ Parse inline formatting within text using a Regex-based approach.
 Optionally substitutes attribute references ({name}) with their values.
 """
 function parse_inline(text::AbstractString, attributes::Dict{String,String}=Dict{String,String}())
-    # Substitute attribute references first
     processed_text = text
     if !isempty(attributes)
         processed_text = substitute_attributes(text, attributes)
     end
 
     nodes = InlineNode[]
-    last_idx = 1 # Tracks the end of the last processed segment
+    last_idx = 1
 
-    # Iterate over all matches of the combined inline token pattern
     for m in eachmatch(INLINE_TOKEN_PATTERN, processed_text)
-        # Add plain text before the current match
         if m.offset > last_idx
             push!(nodes, Text(String(processed_text[last_idx:m.offset-1])))
         end
 
-        # Parse the matched inline token and add it to nodes
         push!(nodes, _parse_inline_match(m))
-
-        # Update last_idx to the end of the current match
         last_idx = m.offset + length(m.match)
     end
 
-    # Add any remaining plain text after the last match
     if last_idx <= length(processed_text)
         push!(nodes, Text(String(processed_text[last_idx:end])))
     end
@@ -152,17 +133,13 @@ Substitute attribute references ({name}) in text with their values.
 function substitute_attributes(text::AbstractString, attributes::Dict{String,String})
     result = String(text)
 
-    # Find and replace all {name} patterns
     for (name, value) in attributes
-        # Use a simple regex replacement for each attribute
         pattern = Regex("\\{$name\\}")
         result = replace(result, pattern => value)
     end
 
     return result
 end
-
-# --- Original ParserState and Block Parsing functions (unchanged) ---
 
 """
     ParserState
@@ -173,8 +150,8 @@ mutable struct ParserState
     lines::Vector{String}
     pos::Int
     attributes::Dict{String,String}
-    base_path::String  # Directory for resolving include paths
-    include_stack::Vector{String}  # Track included files to prevent cycles
+    base_path::String
+    include_stack::Vector{String}  # Prevents circular includes.
 end
 
 ParserState(text::String) = ParserState(split(text, '\n'), 1, Dict{String,String}(), pwd(), String[])
@@ -256,9 +233,7 @@ function _parse_asciidoc_state(state::ParserState)
         line = peek_line(state)
         line === nothing && break
 
-        # Try to parse different block types
         if try_parse_attribute_definition(state)
-            # Attribute was parsed, continue (doesn't produce a block)
             continue
         elseif (block = try_parse_header(state)) !== nothing
             push!(blocks, block)
@@ -302,7 +277,6 @@ function try_parse_attribute_definition(state::ParserState)
     line = peek_line(state)
     line === nothing && return false
 
-    # Match attribute definition: :name: value
     m = match(r"^:([a-zA-Z0-9_-]+):\s*(.*)$", strip(line))
     if m !== nothing
         attr_name = String(m.captures[1])
@@ -312,7 +286,6 @@ function try_parse_attribute_definition(state::ParserState)
         return true
     end
 
-    # Match attribute unset: :name!:
     m = match(r"^:([a-zA-Z0-9_-]+)!:$", strip(line))
     if m !== nothing
         attr_name = String(m.captures[1])
@@ -333,7 +306,6 @@ function try_parse_header(state::ParserState)
     line = peek_line(state)
     line === nothing && return nothing
 
-    # Match header pattern: one or more '=' followed by space and text
     m = match(r"^(=+)\s+(.+?)(?:\s*\[#([^\]]+)\])?$", line)
     if m !== nothing
         level = length(m.captures[1])
@@ -355,14 +327,10 @@ function try_parse_code_block(state::ParserState)
     line = peek_line(state)
     line === nothing && return nothing
 
-    # Check for source block delimiter
     if startswith(line, "----")
         next_line!(state)
 
-        # Look for optional language specifier in previous lines
         language = ""
-
-        # Collect code content
         code_lines = String[]
         while (line = peek_line(state)) !== nothing
             if startswith(line, "----")
@@ -376,13 +344,11 @@ function try_parse_code_block(state::ParserState)
         return CodeBlock(join(code_lines, '\n'), language)
     end
 
-    # Check for source block with language
     m = match(r"^\[source,\s*(\w+)\]$", line)
     if m !== nothing
         language = String(m.captures[1])
         next_line!(state)
 
-        # Next line should be ----
         line = peek_line(state)
         if line !== nothing && startswith(line, "----")
             next_line!(state)
@@ -416,7 +382,6 @@ function try_parse_block_quote(state::ParserState)
     if startswith(line, "____")
         next_line!(state)
 
-        # Collect content until closing delimiter
         content_lines = String[]
         while (line = peek_line(state)) !== nothing
             if startswith(line, "____")
@@ -427,7 +392,6 @@ function try_parse_block_quote(state::ParserState)
             next_line!(state)
         end
 
-        # Parse the content as blocks
         content_text = join(content_lines, '\n')
         inner_doc = parse_asciidoc(content_text)
 
@@ -437,7 +401,6 @@ function try_parse_block_quote(state::ParserState)
     return nothing
 end
 
-# Valid admonition types
 const ADMONITION_TYPES = ["NOTE", "TIP", "IMPORTANT", "WARNING", "CAUTION"]
 
 """
@@ -459,18 +422,15 @@ function try_parse_admonition(state::ParserState)
     line = peek_line(state)
     line === nothing && return nothing
 
-    # Try block form first: [NOTE] or [TIP] etc.
     block_match = match(r"^\[(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]$", strip(line))
     if block_match !== nothing
         admon_type = lowercase(String(block_match.captures[1]))
         next_line!(state)
 
-        # Next line should be ==== delimiter
         delim_line = peek_line(state)
         if delim_line !== nothing && startswith(strip(delim_line), "====")
             next_line!(state)
 
-            # Collect content until closing delimiter
             content_lines = String[]
             while (line = peek_line(state)) !== nothing
                 if startswith(strip(line), "====")
@@ -481,13 +441,12 @@ function try_parse_admonition(state::ParserState)
                 next_line!(state)
             end
 
-            # Parse the content as blocks
             content_text = join(content_lines, '\n')
             inner_doc = parse_asciidoc(content_text)
 
             return Admonition(admon_type, inner_doc.blocks)
         else
-            # No ==== delimiter, treat rest as single paragraph until blank line
+            # No delimiter means single paragraph until blank line.
             content_lines = String[]
             while (line = peek_line(state)) !== nothing
                 stripped = strip(line)
@@ -507,23 +466,19 @@ function try_parse_admonition(state::ParserState)
         end
     end
 
-    # Try inline form: NOTE: text or TIP: text etc.
     inline_match = match(r"^(NOTE|TIP|IMPORTANT|WARNING|CAUTION):\s*(.*)$", line)
     if inline_match !== nothing
         admon_type = lowercase(String(inline_match.captures[1]))
         content = String(inline_match.captures[2])
         next_line!(state)
 
-        # Collect continuation lines (non-blank, not starting with special syntax)
         while (line = peek_line(state)) !== nothing
             stripped = strip(line)
 
-            # Stop at blank line
             if isempty(stripped)
                 break
             end
 
-            # Stop at block delimiters or special syntax
             if startswith(line, "=") || startswith(line, "----") ||
                startswith(line, "____") || startswith(line, "|===") ||
                startswith(line, "[") ||
@@ -561,7 +516,6 @@ function try_parse_include(state::ParserState)
     line = peek_line(state)
     line === nothing && return nothing
 
-    # Match include directive: include::path[attributes]
     m = match(r"^include::([^\[]+)\[(.*)\]$", strip(line))
     if m === nothing
         return nothing
@@ -571,39 +525,31 @@ function try_parse_include(state::ParserState)
     attributes_str = String(m.captures[2])
     next_line!(state)
 
-    # Resolve the path
     if isabspath(include_path)
         resolved_path = include_path
     else
         resolved_path = normpath(joinpath(state.base_path, include_path))
     end
 
-    # Check for circular includes
     if resolved_path in state.include_stack
         @warn "Circular include detected: $resolved_path"
         return BlockNode[]
     end
 
-    # Check if file exists
     if !isfile(resolved_path)
         @warn "Include file not found: $resolved_path"
         return BlockNode[]
     end
 
-    # Read the file content
     content = read(resolved_path, String)
-
-    # Parse attributes for line selection
     lines_attr = _parse_include_lines_attr(attributes_str)
 
-    # Apply line filtering if specified
     if lines_attr !== nothing
         content_lines = split(content, '\n')
         selected_lines = _select_lines(content_lines, lines_attr)
         content = join(selected_lines, '\n')
     end
 
-    # Parse the included content recursively
     new_include_stack = vcat(state.include_stack, [resolved_path])
     include_state = ParserState(content, dirname(resolved_path), new_include_stack)
     included_doc = _parse_asciidoc_state(include_state)
@@ -623,7 +569,6 @@ Supports formats:
 - `lines="1..5;10..15"` - quoted
 """
 function _parse_include_lines_attr(attr_str::String)
-    # Look for lines= attribute
     m = match(r"lines=[\"']?([^\"'\]]+)[\"']?", attr_str)
     if m === nothing
         return nothing
@@ -632,14 +577,12 @@ function _parse_include_lines_attr(attr_str::String)
     lines_spec = String(m.captures[1])
     ranges = UnitRange{Int}[]
 
-    # Split by semicolon for multiple ranges
     for part in split(lines_spec, ';')
         part = strip(part)
         if isempty(part)
             continue
         end
 
-        # Check for range (start..end)
         range_match = match(r"^(\d+)\.\.(\d+)$", part)
         if range_match !== nothing
             start_line = Base.parse(Int, range_match.captures[1])
@@ -648,7 +591,6 @@ function _parse_include_lines_attr(attr_str::String)
             continue
         end
 
-        # Check for single line
         if match(r"^\d+$", part) !== nothing
             line_num = Base.parse(Int, part)
             push!(ranges, line_num:line_num)
@@ -704,17 +646,14 @@ function try_parse_list(state::ParserState)
     line = peek_line(state)
     line === nothing && return nothing
 
-    # Try unordered list (* or -)
     if match(r"^\s*[\*\-]\s+", line) !== nothing
         return parse_unordered_list(state)
     end
 
-    # Try ordered list (. or 1.)
     if match(r"^\s*\.+\s+", line) !== nothing || match(r"^\s*\d+\.\s+", line) !== nothing
         return parse_ordered_list(state)
     end
 
-    # Try definition list (::)
     if match(r"^.+::\s*$", line) !== nothing
         return parse_definition_list(state)
     end
@@ -786,7 +725,6 @@ function parse_definition_list(state::ParserState)
         term = m.captures[1]
         next_line!(state)
 
-        # Next line should be the description (indented or not)
         desc_line = peek_line(state)
         if desc_line !== nothing && !isempty(strip(desc_line))
             next_line!(state)
@@ -818,7 +756,6 @@ function try_parse_table(state::ParserState)
 
         while (line = peek_line(state)) !== nothing
             if startswith(line, "|===")
-                # End of table
                 if !isempty(current_row_cells)
                     push!(rows, TableRow(current_row_cells))
                 end
@@ -827,7 +764,6 @@ function try_parse_table(state::ParserState)
             end
 
             if startswith(line, "|")
-                # Parse table row
                 cells = split(line[2:end], '|')
                 for cell in cells
                     cell_content = strip(cell)
@@ -836,7 +772,6 @@ function try_parse_table(state::ParserState)
                     end
                 end
 
-                # Each line is a row
                 if !isempty(current_row_cells)
                     push!(rows, TableRow(current_row_cells))
                     current_row_cells = TableCell[]
@@ -861,18 +796,15 @@ function try_parse_paragraph(state::ParserState)
     line = peek_line(state)
     line === nothing && return nothing
 
-    # Collect lines until blank line or special block
     lines = String[]
 
     while (line = peek_line(state)) !== nothing
         stripped = strip(line)
 
-        # Stop at blank line
         if isempty(stripped)
             break
         end
 
-        # Stop at block delimiters or special syntax
         if startswith(line, "=") || startswith(line, "----") ||
            startswith(line, "____") || startswith(line, "|===") ||
            match(r"^\s*[\*\-]\s+", line) !== nothing ||

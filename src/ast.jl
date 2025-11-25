@@ -4,7 +4,6 @@ Abstract Syntax Tree (AST) node types for AsciiDoc documents.
 This module defines the type hierarchy for representing parsed AsciiDoc content.
 """
 
-# Exported types
 export AsciiDocNode, Document, Header, Paragraph, List, ListItem,
        CodeBlock, BlockQuote, Table, TableRow, TableCell,
        InlineNode, Text, Bold, Italic, Monospace, Subscript, Superscript,
@@ -12,12 +11,10 @@ export AsciiDocNode, Document, Header, Paragraph, List, ListItem,
        OrderedList, UnorderedList, DefinitionList, DefinitionTerm, DefinitionDescription,
        Admonition
 
-# Abstract base types
 abstract type AsciiDocNode end
 abstract type BlockNode <: AsciiDocNode end
 abstract type InlineNode <: AsciiDocNode end
 
-# Document structure
 """
     Document(attributes::Dict{String,String}, blocks::Vector{BlockNode})
 
@@ -30,7 +27,6 @@ end
 
 Document(blocks::Vector{BlockNode}) = Document(Dict{String,String}(), blocks)
 
-# Block-level nodes
 """
     Header(level::Int, text::Vector{InlineNode}, id::String)
 
@@ -94,7 +90,6 @@ struct Admonition <: BlockNode
     content::Vector{BlockNode}
 end
 
-# List structures
 abstract type List <: BlockNode end
 
 """
@@ -166,7 +161,6 @@ end
 DefinitionList(items::Vector{Tuple{DefinitionTerm,DefinitionDescription}}) =
     DefinitionList(items, Dict{String,String}())
 
-# Table structures
 """
     TableCell(content::Vector{InlineNode}, attributes::Dict{String,String})
 
@@ -214,7 +208,6 @@ end
 
 HorizontalRule() = HorizontalRule(Dict{String,String}())
 
-# Inline nodes
 """
     Text(content::String)
 

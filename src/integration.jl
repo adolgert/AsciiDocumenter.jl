@@ -24,7 +24,7 @@ md_ast = to_markdownast(doc)
 import MarkdownAST
 import MarkdownAST: Node, @ast
 
-export to_markdownast
+export to_markdownast, to_markdown
 
 """
     to_markdownast(doc::Document) -> MarkdownAST.Node
@@ -48,17 +48,12 @@ function to_markdownast(doc::Document)
     return root
 end
 
-# ============================================================================
-# Block Node Conversions
-# ============================================================================
-
 """
     convert_block(node::BlockNode) -> Union{MarkdownAST.Node, Nothing}
 
 Convert an AsciiDoc block node to MarkdownAST.
 """
 function convert_block(node::BlockNode)
-    # Dispatch to specific conversion methods
     if node isa Header
         return convert_header(node)
     elseif node isa Paragraph
@@ -93,7 +88,6 @@ Convert AsciiDoc Header to MarkdownAST Heading.
 function convert_header(node::Header)
     heading = Node(MarkdownAST.Heading(node.level))
 
-    # Convert inline content
     for inline in node.text
         child = convert_inline(inline)
         if child !== nothing
@@ -112,7 +106,6 @@ Convert AsciiDoc Paragraph to MarkdownAST Paragraph.
 function convert_paragraph(node::Paragraph)
     para = Node(MarkdownAST.Paragraph())
 
-    # Convert inline content
     for inline in node.content
         child = convert_inline(inline)
         if child !== nothing
@@ -142,7 +135,6 @@ Convert AsciiDoc BlockQuote to MarkdownAST BlockQuote.
 function convert_blockquote(node::BlockQuote)
     quote_node = Node(MarkdownAST.BlockQuote())
 
-    # Convert nested blocks
     for block in node.blocks
         child = convert_block(block)
         if child !== nothing
@@ -174,7 +166,6 @@ Maps AsciiDoc admonition types to Documenter.jl categories:
 - caution -> "danger"
 """
 function convert_admonition(node::Admonition)
-    # Map AsciiDoc types to MarkdownAST/Documenter categories
     category_map = Dict(
         "note" => "note",
         "tip" => "tip",
@@ -184,13 +175,10 @@ function convert_admonition(node::Admonition)
     )
 
     category = get(category_map, node.type, "note")
-
-    # Title is the capitalized type
     title = uppercase(node.type[1:1]) * node.type[2:end]
 
     admon_node = Node(MarkdownAST.Admonition(category, title))
 
-    # Convert nested blocks
     for block in node.content
         child = convert_block(block)
         if child !== nothing
@@ -248,7 +236,7 @@ so we wrap inline content in a Paragraph.
 function convert_list_item(item::ListItem)
     item_node = Node(MarkdownAST.Item())
 
-    # Wrap inline content in a paragraph (Item can only contain blocks)
+    # MarkdownAST Item nodes can only contain block-level elements.
     para = Node(MarkdownAST.Paragraph())
     for inline in item.content
         child = convert_inline(inline)
@@ -258,7 +246,6 @@ function convert_list_item(item::ListItem)
     end
     push!(item_node.children, para)
 
-    # Handle nested lists
     if item.nested !== nothing
         nested = convert_block(item.nested)
         if nested !== nothing
@@ -279,14 +266,12 @@ so we convert to a regular list with bold terms. List items must
 contain block-level elements, so we wrap in paragraphs.
 """
 function convert_definition_list(node::DefinitionList)
-    # Use unordered list as fallback
     list_node = Node(MarkdownAST.List(:bullet, false))
 
     for (term, desc) in node.items
         item_node = Node(MarkdownAST.Item())
         para = Node(MarkdownAST.Paragraph())
 
-        # Term in bold
         strong_node = Node(MarkdownAST.Strong())
         for inline in term.content
             child = convert_inline(inline)
@@ -296,10 +281,8 @@ function convert_definition_list(node::DefinitionList)
         end
         push!(para.children, strong_node)
 
-        # Add colon and space
         push!(para.children, Node(MarkdownAST.Text(": ")))
 
-        # Description
         for inline in desc.content
             child = convert_inline(inline)
             if child !== nothing
@@ -330,18 +313,12 @@ function convert_table(node::Table)
         return nothing
     end
 
-    # Determine number of columns from first row
     ncols = length(node.rows[1].cells)
-
-    # Create table with spec (alignment for each column)
     spec = fill(:left, ncols)
     table_node = Node(MarkdownAST.Table(spec))
 
-    # Separate header rows from body rows
-    # First row is typically the header, or rows explicitly marked
     header_rows = Int[]
     body_rows = Int[]
-
     for (idx, row) in enumerate(node.rows)
         if idx == 1 || row.is_header
             push!(header_rows, idx)
@@ -350,7 +327,6 @@ function convert_table(node::Table)
         end
     end
 
-    # Create header section if there are header rows
     if !isempty(header_rows)
         header_section = Node(MarkdownAST.TableHeader())
         for idx in header_rows
@@ -376,7 +352,6 @@ function convert_table(node::Table)
         push!(table_node.children, header_section)
     end
 
-    # Create body section if there are body rows
     if !isempty(body_rows)
         body_section = Node(MarkdownAST.TableBody())
         for idx in body_rows
@@ -412,10 +387,6 @@ Convert AsciiDoc HorizontalRule to MarkdownAST ThematicBreak.
 function convert_horizontal_rule(node::HorizontalRule)
     return Node(MarkdownAST.ThematicBreak())
 end
-
-# ============================================================================
-# Inline Node Conversions
-# ============================================================================
 
 """
     convert_inline(node::InlineNode) -> Union{MarkdownAST.Node, Nothing}
@@ -500,8 +471,6 @@ end
 Convert AsciiDoc Monospace to MarkdownAST Code.
 """
 function convert_monospace(node::Monospace)
-    # Inline code in MarkdownAST is just Code with the text content
-    # We need to extract the text from the inline nodes
     text_content = ""
     for inline in node.content
         if inline isa Text
@@ -521,7 +490,6 @@ Note: MarkdownAST doesn't have native subscript support.
 We use HTML fallback: <sub>text</sub>
 """
 function convert_subscript(node::Subscript)
-    # Use HTMLInline as fallback
     text_content = ""
     for inline in node.content
         if inline isa Text
@@ -542,7 +510,6 @@ Note: MarkdownAST doesn't have native superscript support.
 We use HTML fallback: <sup>text</sup>
 """
 function convert_superscript(node::Superscript)
-    # Use HTMLInline as fallback
     text_content = ""
     for inline in node.content
         if inline isa Text
@@ -560,10 +527,8 @@ end
 Convert AsciiDoc Link to MarkdownAST Link.
 """
 function convert_link(node::Link)
-    # MarkdownAST Link(destination, title)
     link = Node(MarkdownAST.Link(node.url, ""))
 
-    # Convert link text
     if !isempty(node.text)
         for inline in node.text
             child = convert_inline(inline)
@@ -585,11 +550,8 @@ end
 Convert AsciiDoc Image to MarkdownAST Image.
 """
 function convert_image(node::Image)
-    # MarkdownAST Image(destination, title)
-    # Use alt_text as title
     img = Node(MarkdownAST.Image(node.url, node.alt_text))
 
-    # Image in MarkdownAST can have text content (the alt text)
     if !isempty(node.alt_text)
         push!(img.children, Node(MarkdownAST.Text(node.alt_text)))
     end
@@ -605,11 +567,9 @@ Convert AsciiDoc CrossRef to MarkdownAST Link.
 Cross-references become internal links with # prefix.
 """
 function convert_crossref(node::CrossRef)
-    # Convert to link with # prefix
     destination = "#$(node.target)"
     link = Node(MarkdownAST.Link(destination, ""))
 
-    # Convert link text
     if !isempty(node.text)
         for inline in node.text
             child = convert_inline(inline)
@@ -632,4 +592,244 @@ Convert AsciiDoc LineBreak to MarkdownAST LineBreak.
 """
 function convert_linebreak(node::LineBreak)
     return Node(MarkdownAST.LineBreak())
+end
+
+"""
+    to_markdown(doc::Document) -> String
+
+Convert an AsciiDoc document to a Markdown string.
+
+# Example
+
+```julia
+doc = parse(\"\"\"
+= My Title
+
+Some *bold* text.
+\"\"\")
+
+md = to_markdown(doc)
+```
+"""
+function to_markdown(doc::Document)
+    ast = to_markdownast(doc)
+    return render_markdown(ast)
+end
+
+"""
+    render_markdown(node::MarkdownAST.Node) -> String
+
+Render a MarkdownAST node tree to a Markdown string.
+"""
+function render_markdown(node::MarkdownAST.Node)
+    io = IOBuffer()
+    render_md(io, node, 0)
+    return String(take!(io))
+end
+
+function render_md(io::IO, node::MarkdownAST.Node, indent::Int)
+    render_md_element(io, node.element, node, indent)
+end
+
+function render_md_element(io::IO, ::MarkdownAST.Document, node::MarkdownAST.Node, indent::Int)
+    first = true
+    for child in node.children
+        if !first
+            println(io)
+        end
+        render_md(io, child, indent)
+        first = false
+    end
+end
+
+function render_md_element(io::IO, elem::MarkdownAST.Heading, node::MarkdownAST.Node, indent::Int)
+    print(io, "#"^elem.level, " ")
+    for child in node.children
+        render_md_inline(io, child)
+    end
+    println(io)
+end
+
+function render_md_element(io::IO, ::MarkdownAST.Paragraph, node::MarkdownAST.Node, indent::Int)
+    print(io, " "^indent)
+    for child in node.children
+        render_md_inline(io, child)
+    end
+    println(io)
+end
+
+function render_md_element(io::IO, elem::MarkdownAST.CodeBlock, node::MarkdownAST.Node, indent::Int)
+    lang = isempty(elem.info) ? "" : elem.info
+    println(io, "```", lang)
+    print(io, elem.code)
+    if !endswith(elem.code, "\n")
+        println(io)
+    end
+    println(io, "```")
+end
+
+function render_md_element(io::IO, ::MarkdownAST.BlockQuote, node::MarkdownAST.Node, indent::Int)
+    buf = IOBuffer()
+    for child in node.children
+        render_md(buf, child, 0)
+    end
+    content = String(take!(buf))
+    for line in split(rstrip(content), "\n")
+        println(io, "> ", line)
+    end
+end
+
+function render_md_element(io::IO, elem::MarkdownAST.Admonition, node::MarkdownAST.Node, indent::Int)
+    println(io, "!!! ", elem.category, " \"", elem.title, "\"")
+    for child in node.children
+        buf = IOBuffer()
+        render_md(buf, child, 0)
+        content = String(take!(buf))
+        for line in split(rstrip(content), "\n")
+            println(io, "    ", line)
+        end
+    end
+end
+
+function render_md_element(io::IO, elem::MarkdownAST.List, node::MarkdownAST.Node, indent::Int)
+    marker = elem.type == :ordered ? "1. " : "- "
+    for child in node.children
+        render_md_list_item(io, child, marker, indent)
+    end
+end
+
+function render_md_list_item(io::IO, node::MarkdownAST.Node, marker::String, indent::Int)
+    print(io, " "^indent, marker)
+    first = true
+    for child in node.children
+        if first
+            buf = IOBuffer()
+            render_md(buf, child, 0)
+            content = rstrip(String(take!(buf)))
+            println(io, content)
+            first = false
+        else
+            render_md(io, child, indent + length(marker))
+        end
+    end
+end
+
+function render_md_element(io::IO, ::MarkdownAST.Item, node::MarkdownAST.Node, indent::Int)
+    for child in node.children
+        render_md(io, child, indent)
+    end
+end
+
+function render_md_element(io::IO, ::MarkdownAST.ThematicBreak, node::MarkdownAST.Node, indent::Int)
+    println(io, "---")
+end
+
+function render_md_element(io::IO, elem::MarkdownAST.Table, node::MarkdownAST.Node, indent::Int)
+    rows = []
+    for child in node.children
+        if child.element isa MarkdownAST.TableHeader || child.element isa MarkdownAST.TableBody
+            for row in child.children
+                push!(rows, row)
+            end
+        elseif child.element isa MarkdownAST.TableRow
+            push!(rows, child)
+        end
+    end
+
+    if isempty(rows)
+        return
+    end
+
+    # Render header row
+    header_row = rows[1]
+    print(io, "|")
+    for cell in header_row.children
+        print(io, " ")
+        for c in cell.children
+            render_md_inline(io, c)
+        end
+        print(io, " |")
+    end
+    println(io)
+
+    # Separator
+    ncols = length(collect(header_row.children))
+    println(io, "|", join(fill("---", ncols), "|"), "|")
+
+    # Data rows
+    for row in rows[2:end]
+        print(io, "|")
+        for cell in row.children
+            print(io, " ")
+            for c in cell.children
+                render_md_inline(io, c)
+            end
+            print(io, " |")
+        end
+        println(io)
+    end
+end
+
+function render_md_element(io::IO, elem, node::MarkdownAST.Node, indent::Int)
+    for child in node.children
+        render_md(io, child, indent)
+    end
+end
+
+function render_md_inline(io::IO, node::MarkdownAST.Node)
+    render_md_inline_element(io, node.element, node)
+end
+
+function render_md_inline_element(io::IO, elem::MarkdownAST.Text, node::MarkdownAST.Node)
+    print(io, elem.text)
+end
+
+function render_md_inline_element(io::IO, elem::MarkdownAST.Code, node::MarkdownAST.Node)
+    print(io, "`", elem.code, "`")
+end
+
+function render_md_inline_element(io::IO, ::MarkdownAST.Strong, node::MarkdownAST.Node)
+    print(io, "**")
+    for child in node.children
+        render_md_inline(io, child)
+    end
+    print(io, "**")
+end
+
+function render_md_inline_element(io::IO, ::MarkdownAST.Emph, node::MarkdownAST.Node)
+    print(io, "*")
+    for child in node.children
+        render_md_inline(io, child)
+    end
+    print(io, "*")
+end
+
+function render_md_inline_element(io::IO, elem::MarkdownAST.Link, node::MarkdownAST.Node)
+    print(io, "[")
+    for child in node.children
+        render_md_inline(io, child)
+    end
+    print(io, "](", elem.destination, ")")
+end
+
+function render_md_inline_element(io::IO, elem::MarkdownAST.Image, node::MarkdownAST.Node)
+    print(io, "![", elem.title, "](", elem.destination, ")")
+end
+
+function render_md_inline_element(io::IO, ::MarkdownAST.LineBreak, node::MarkdownAST.Node)
+    println(io, "  ")
+end
+
+function render_md_inline_element(io::IO, ::MarkdownAST.SoftBreak, node::MarkdownAST.Node)
+    println(io)
+end
+
+function render_md_inline_element(io::IO, elem::MarkdownAST.HTMLInline, node::MarkdownAST.Node)
+    print(io, elem.html)
+end
+
+function render_md_inline_element(io::IO, elem, node::MarkdownAST.Node)
+    for child in node.children
+        render_md_inline(io, child)
+    end
 end

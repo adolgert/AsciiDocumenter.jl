@@ -4,12 +4,7 @@ HTML backend for AsciiDoc.
 Converts AsciiDoc AST to HTML output using IO streaming for memory efficiency.
 """
 
-# Exported functions for HTML backend
 export to_html
-
-# ============================================================================
-# Core IO-based rendering methods
-# ============================================================================
 
 """
     to_html(io::IO, doc::Document; standalone=false) -> Nothing
@@ -46,7 +41,6 @@ th { background-color: #f5f5f5; }
 """)
     end
 
-    # Convert blocks
     for block in doc.blocks
         to_html(io, block)
         write(io, "\n")
@@ -65,7 +59,6 @@ end
 Convert a header to HTML heading tag, writing to IO.
 """
 function to_html(io::IO, node::Header)
-    # Map AsciiDoc levels to HTML (h1-h6)
     level = clamp(node.level, 1, 6)
 
     print(io, "<h", level)
@@ -189,7 +182,6 @@ Convert an ordered list to HTML, writing to IO.
 function to_html(io::IO, node::OrderedList)
     print(io, "<ol")
 
-    # Map list style to HTML type attribute
     if node.style == "loweralpha"
         print(io, " type=\"a\"")
     elseif node.style == "upperalpha"
@@ -287,10 +279,6 @@ function to_html(io::IO, node::HorizontalRule)
     print(io, "<hr>")
     return nothing
 end
-
-# ============================================================================
-# Inline nodes
-# ============================================================================
 
 """
     to_html(io::IO, node::Text) -> Nothing
@@ -438,10 +426,6 @@ function to_html(io::IO, node::LineBreak)
     return nothing
 end
 
-# ============================================================================
-# Convenience wrappers (backward compatibility)
-# ============================================================================
-
 """
     to_html(doc::Document; standalone=false) -> String
 
@@ -469,10 +453,6 @@ function to_html(node::Union{BlockNode,InlineNode})
     to_html(io, node)
     return String(take!(io))
 end
-
-# ============================================================================
-# Utility functions
-# ============================================================================
 
 """
     escape_html(text::String) -> String
