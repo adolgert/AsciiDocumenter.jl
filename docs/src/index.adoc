@@ -1,0 +1,68 @@
+= AsciiDoc.jl
+
+Convert AsciiDoc to Markdown for use with link:https://documenter.juliadocs.org/[Documenter.jl].
+
+== Quick Start
+
+[source,julia]
+----
+using Pkg
+Pkg.add("AsciiDoc")
+----
+
+[source,julia]
+----
+using AsciiDoc
+
+# Parse AsciiDoc
+doc = AsciiDoc.parse("""
+= My Document
+
+This is *bold* text.
+
+See link:@ref[My Function].
+""")
+
+# Convert to Markdown string for Documenter
+md = AsciiDoc.to_markdown(doc)
+----
+
+== Documentation
+
+* link:guide.md[Guide] — How to configure `make.jl` and project structure.
+* link:syntax.md[Syntax] — How to write AsciiDoc that maps to Documenter features (math, cross-refs, @docs).
+
+== Supported Features
+
+[cols="1,1,1"]
+|===
+| Feature | AsciiDoc Syntax | Documenter Result
+
+| *Cross-Refs*
+| `link:@ref[Target]`
+| `[Target](@ref)`
+
+| *Math*
+| `stem:[x^2]`
+| `$x^2$`
+
+| *Docstrings*
+| `[source,@docs]`
+| ```` ```@docs ````
+
+| *Admonitions*
+| `[NOTE]`
+| `!!! note`
+
+| *Code*
+| `[source,julia]`
+| ```` ```julia ````
+
+| *Standard*
+| Headers, Lists, Tables
+| Standard Markdown
+|===
+
+== License
+
+MIT

@@ -1,14 +1,15 @@
-# Guide
+= Guide
 
-This guide assumes familiarity with [Documenter.jl](https://documenter.juliadocs.org/). It covers how to write documentation in AsciiDoc.
+This guide assumes familiarity with link:https://documenter.juliadocs.org/[Documenter.jl]. It covers how to write documentation in AsciiDoc.
 
-## Conversion Workflow
+== Conversion Workflow
 
 Documenter.jl works on Markdown files. To use AsciiDoc, you must convert your `.adoc` files to `.md` *before* `makedocs` runs.
 
-### In `docs/make.jl`
+=== In `docs/make.jl`
 
-```julia
+[source,julia]
+----
 using Documenter
 using AsciiDoc
 using MyPackage
@@ -44,46 +45,49 @@ makedocs(
         "API" => "api.md"
     ]
 )
-```
+----
 
-## Writing for Documenter
+== Writing for Documenter
 
 AsciiDoc.jl is designed to act as a transparent bridge. You write AsciiDoc, and it generates the Markdown signals that Documenter expects.
 
-### Cross-References
+=== Cross-References
 Do not use standard `<<id>>` internal links for cross-page references. Use the `link:` macro with `@ref`.
 
-*   **Correct:** `link:@ref[See the Guide]`
-*   **Correct:** `link:@ref#section-id[See Section]`
-*   **Incorrect:** `<<section-id, See Section>>` (Only works on the same page)
+* *Correct:* `link:@ref[See the Guide]`
+* *Correct:* `link:@ref#section-id[See Section]`
+* *Incorrect:* `<<section-id, See Section>>` (Only works on the same page)
 
-### Math
+=== Math
 Use `stem` blocks.
 
-*   **Inline:** `stem:[x^2]`
-*   **Display:**
-    ```asciidoc
-    [stem]
-    ++++
-    x^2
-    ++++
-    ```
+* *Inline:* `stem:[x^2]`
+* *Display:*
++
+[source,asciidoc]
+----
+[stem]
+++++
+x^2
+++++
+----
 
-### Docstrings
+=== Docstrings
 Use `[source,@docs]` blocks.
 
-```asciidoc
+[source,asciidoc]
+----
 [source,@docs]
-----
+------
 MyPackage.my_function
+------
 ----
-```
 
-## File Structure
+== File Structure
 
 Your `docs/src` folder can look exactly like a standard Documenter project, just with `.adoc` files.
 
-```
+----
 docs/
 ├── make.jl
 ├── Project.toml
@@ -91,6 +95,6 @@ docs/
     ├── index.adoc
     ├── guide.adoc
     └── api.adoc
-```
+----
 
 The conversion script will generate sibling `.md` files (e.g., `index.md`) which Documenter will then process.
