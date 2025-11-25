@@ -126,15 +126,54 @@ include("spec_examples.jl")
     end
 
     @testset "Tables" begin
-        doc = parse("""
-        |===
-        |Cell 1|Cell 2
-        |Cell 3|Cell 4
-        |===
-        """)
-        @test length(doc.blocks) == 1
-        @test doc.blocks[1] isa Table
-        @test length(doc.blocks[1].rows) == 2
+        @testset "Simple table with cells on same line" begin
+            doc = parse("""
+            |===
+            |Cell 1|Cell 2
+            |Cell 3|Cell 4
+            |===
+            """)
+            @test length(doc.blocks) == 1
+            @test doc.blocks[1] isa Table
+            @test length(doc.blocks[1].rows) == 2
+            @test length(doc.blocks[1].rows[1].cells) == 2
+            @test length(doc.blocks[1].rows[2].cells) == 2
+        end
+
+        @testset "Table with cells on separate lines (blank line row separator)" begin
+            # This is the format used in docs/src/index.adoc
+            doc = parse("""
+            [cols="1,1,1"]
+            |===
+            | Header 1 | Header 2 | Header 3
+
+            | Cell A1
+            | Cell A2
+            | Cell A3
+
+            | Cell B1
+            | Cell B2
+            | Cell B3
+            |===
+            """)
+            @test length(doc.blocks) == 1
+            table = doc.blocks[1]
+            @test table isa Table
+            @test length(table.rows) == 3  # header + 2 body rows
+            # Each row should have 3 cells
+            @test length(table.rows[1].cells) == 3
+            @test length(table.rows[2].cells) == 3
+            @test length(table.rows[3].cells) == 3
+
+            # Test markdown output
+            md = AsciiDocumenter.to_markdown(doc)
+            # Should have 3 columns in the separator line
+            @test contains(md, "|---|---|---|")
+            # Should have exactly 3 rows (header + separator + 2 body rows = 4 lines total)
+            md_lines = split(strip(md), '\n')
+            table_lines = filter(l -> startswith(l, "|"), md_lines)
+            @test length(table_lines) == 4  # header line + separator + 2 body lines
+        end
     end
 
     @testset "Horizontal Rules" begin
