@@ -102,9 +102,35 @@ const LaTeX = LaTeXBackend
 const HTML = HTMLBackend
 
 """
+    Base.parse(::Type{Document}, text::AbstractString; base_path::AbstractString=pwd()) -> Document
+
+Parse AsciiDoc text into a Document AST.
+
+This extends `Base.parse` to support the `Document` type.
+
+# Arguments
+- `text`: The AsciiDoc source text
+- `base_path`: Directory for resolving include directives (default: current directory)
+
+# Example
+
+```julia
+doc = Base.parse(Document, \"\"\"
+= My Title
+
+This is a paragraph.
+\"\"\")
+```
+"""
+Base.parse(::Type{Document}, text::AbstractString; base_path::AbstractString=pwd()) =
+    parse_asciidoc(String(text); base_path=String(base_path))
+
+"""
     parse(text::AbstractString; base_path::AbstractString=pwd()) -> Document
 
 Parse AsciiDoc text into a Document AST.
+
+This is a convenience wrapper around `Base.parse(Document, text)`.
 
 # Arguments
 - `text`: The AsciiDoc source text
@@ -123,8 +149,6 @@ This is a paragraph.
 doc = parse("include::other.adoc[]"; base_path="/path/to/docs")
 ```
 """
-Base.parse(::Type{Document}, text::AbstractString; base_path::AbstractString=pwd()) =
-    parse_asciidoc(String(text); base_path=String(base_path))
 parse(text::AbstractString; base_path::AbstractString=pwd()) = Base.parse(Document, text; base_path=base_path)
 
 """
