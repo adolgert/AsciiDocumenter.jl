@@ -4,13 +4,11 @@ on:
   push:
     branches:
       - main
-      - master
     tags:
       - 'v*'
   pull_request:
     branches:
       - main
-      - master
   workflow_dispatch:
 
 jobs:
@@ -21,7 +19,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # LTS (1.10) on all platforms
           - version: '1.10'
             os: ubuntu-latest
             arch: x64
@@ -31,7 +28,6 @@ jobs:
           - version: '1.10'
             os: windows-latest
             arch: x64
-          # Latest release on Linux
           - version: '1'
             os: ubuntu-latest
             arch: x64
