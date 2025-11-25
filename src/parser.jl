@@ -927,6 +927,10 @@ function try_parse_table(state::ParserState)
         rows = TableRow[]
         current_row_cells = TableCell[]
 
+        # Check if header option is set
+        has_header_option = haskey(table_attrs, "options") &&
+                           contains(table_attrs["options"], "header")
+
         while (line = peek_line(state)) !== nothing
             if startswith(line, "|===")
                 if !isempty(current_row_cells)
@@ -946,7 +950,9 @@ function try_parse_table(state::ParserState)
                 end
 
                 if !isempty(current_row_cells)
-                    push!(rows, TableRow(current_row_cells))
+                    # First row is header if option is set
+                    is_header = isempty(rows) && has_header_option
+                    push!(rows, TableRow(current_row_cells, is_header))
                     current_row_cells = TableCell[]
                 end
             end
@@ -964,12 +970,26 @@ end
     _parse_block_attributes!(attrs::Dict{String,String}, attr_str::String)
 
 Parse block attributes like `cols="1,1,1", options="header"` into a dictionary.
+
+Also handles shorthand options like `%header`, `%footer`, `%autowidth`.
 """
 function _parse_block_attributes!(attrs::Dict{String,String}, attr_str::String)
     # Handle various formats:
     # - cols="1,1,1"
     # - options="header"
     # - cols="1,1,1", options="header"
+    # - %header (shorthand for options="header")
+
+    # Handle shorthand %option syntax (e.g., %header, %footer, %autowidth)
+    for m in eachmatch(r"%(\w+)", attr_str)
+        option = String(m.captures[1])
+        # Store in options, appending if already exists
+        if haskey(attrs, "options")
+            attrs["options"] *= "," * option
+        else
+            attrs["options"] = option
+        end
+    end
 
     # Simple key=value parsing (handles quoted values)
     for m in eachmatch(r"(\w+)\s*=\s*\"([^\"]*)\"|(\w+)\s*=\s*([^\s,\]]+)", attr_str)

@@ -12,7 +12,7 @@ module SpecTests
 using Test
 using AsciiDoc
 # Explicitly import AsciiDoc's parse to avoid ambiguity with Base.parse
-import AsciiDoc: parse, convert, LaTeX, HTML, Document, Admonition, Text, Paragraph, Image
+import AsciiDoc: parse, convert, LaTeX, HTML, Document, Admonition, Text, Paragraph, Image, Table
 
 # Test DSL for spec compliance
 """
@@ -413,7 +413,23 @@ end
 
     @test_skip_unimplemented "Column alignment" "Not implemented"
     @test_skip_unimplemented "Cell spanning" "Not implemented"
-    @test_skip_unimplemented "Table header (explicit)" "Auto-detection only"
+
+    @test_feature "Table header (explicit)" "[%header]\\n|===\\n|H|\\n|D|\\n|===" begin
+        doc = parse("[%header]\n|===\n|Header 1|Header 2\n|Data 1|Data 2\n|===")
+        assert_first_block_type(doc, Table)
+        @test length(doc.blocks[1].rows) == 2
+        # First row should be marked as header
+        @test doc.blocks[1].rows[1].is_header == true
+        @test doc.blocks[1].rows[2].is_header == false
+        # HTML should use <th> for header cells
+        html = convert(HTML, doc)
+        @test contains(html, "<th>")
+    end
+
+    @test_feature "Table header with options syntax" "[options=\"header\"]" begin
+        doc = parse("[options=\"header\"]\n|===\n|H1|H2\n|V1|V2\n|===")
+        @test doc.blocks[1].rows[1].is_header == true
+    end
 end
 
 # ----------------------------------------------------------------------------
