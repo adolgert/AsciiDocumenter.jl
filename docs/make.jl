@@ -33,6 +33,7 @@ end
 
 makedocs(
     sitename = "AsciiDoc.jl",
+    authors = "Andrew Dolgert <github@dolgert.com",
     modules = [AsciiDoc],
     pages = [
         "Home" => "index.md",
@@ -40,7 +41,14 @@ makedocs(
         "Syntax" => "syntax.md",
     ],
     format = Documenter.HTML(
-        prettyurls = get(ENV, "CI", nothing) == "true"
+        prettyurls = get(ENV, "CI", nothing) == "true",
+        edit_link = "main"
     ),
     checkdocs = :none # Disable strict docstring checking for this initial build
+)
+deploydocs(;
+    target="build",
+    repo="github.com/adolgert/AsciiDoc.jl.git",
+    devbranch="main",
+    branch="gh-pages"
 )
