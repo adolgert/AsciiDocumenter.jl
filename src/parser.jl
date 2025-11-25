@@ -776,20 +776,55 @@ function parse_unordered_list(state::ParserState, level::Int=1)
 end
 
 """
-    parse_ordered_list(state::ParserState) -> OrderedList
+    parse_ordered_list(state::ParserState, level::Int=1) -> OrderedList
 
-Parse an ordered list.
+Parse an ordered list with support for nesting.
+
+AsciiDoc nesting uses multiple dots:
+- `.` = level 1
+- `..` = level 2
+- `...` = level 3, etc.
+
+Numbered format (1., 2., etc.) is always treated as level 1.
 """
-function parse_ordered_list(state::ParserState)
+function parse_ordered_list(state::ParserState, level::Int=1)
     items = ListItem[]
 
     while (line = peek_line(state)) !== nothing
-        m = match(r"^\s*(?:\.+|\d+\.)\s+(.*)$", line)
+        # Match ordered list item: dots or number followed by content
+        m = match(r"^(\.+|\d+\.)\s+(.*)$", line)
         if m === nothing
             break
         end
 
-        content = String(m.captures[1])
+        marker = String(m.captures[1])
+        # Numbered markers (1., 2., etc.) are always level 1
+        # Dot markers have level = number of dots
+        item_level = isdigit(marker[1]) ? 1 : length(marker)
+
+        # If this item is at a higher level (fewer dots), we're done with this list
+        if item_level < level
+            break
+        end
+
+        # If this item is at a deeper level, it belongs to a nested list
+        if item_level > level
+            # Don't consume this line - let nested parsing handle it
+            # Attach nested list to the last item
+            if !isempty(items)
+                nested = parse_ordered_list(state, item_level)
+                # Replace last item with one that has the nested list
+                last_item = items[end]
+                items[end] = ListItem(last_item.content, nested)
+            else
+                # No parent item - skip this malformed nested item
+                next_line!(state)
+            end
+            continue
+        end
+
+        # This item is at our level - consume it
+        content = String(m.captures[2])
         next_line!(state)
 
         push!(items, ListItem(parse_inline(content, state.attributes)))

@@ -253,7 +253,15 @@ end
         assert_first_block_type(doc, UnorderedList)
     end
 
-    @test_skip_unimplemented "Nested unordered lists" "Nesting not fully tested"
+    @test_feature "Nested unordered lists" "* item\\n** nested" begin
+        doc = parse("* Outer 1\n** Inner A\n** Inner B\n* Outer 2")
+        assert_first_block_type(doc, UnorderedList)
+        @test length(doc.blocks[1].items) == 2
+        # First item should have nested list
+        @test doc.blocks[1].items[1].nested !== nothing
+        @test doc.blocks[1].items[1].nested isa UnorderedList
+        @test length(doc.blocks[1].items[1].nested.items) == 2
+    end
 end
 
 @spec_section "Ordered Lists" "https://docs.asciidoctor.org/asciidoc/latest/lists/ordered/" begin
@@ -267,6 +275,16 @@ end
     @test_feature "Ordered list with numbers" "1. item" begin
         doc = parse("1. Item 1\n2. Item 2")
         assert_first_block_type(doc, OrderedList)
+    end
+
+    @test_feature "Nested ordered lists" ". item\\n.. nested" begin
+        doc = parse(". Outer 1\n.. Inner A\n.. Inner B\n. Outer 2")
+        assert_first_block_type(doc, OrderedList)
+        @test length(doc.blocks[1].items) == 2
+        # First item should have nested list
+        @test doc.blocks[1].items[1].nested !== nothing
+        @test doc.blocks[1].items[1].nested isa OrderedList
+        @test length(doc.blocks[1].items[1].nested.items) == 2
     end
 
     @test_skip_unimplemented "Custom start number" "Not implemented"
