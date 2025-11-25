@@ -154,20 +154,20 @@ print_comparison_report(result)
 
 ## Progress Tracking
 
-- [x] basic_elements.md/.adoc
-- [x] api_docs.md/.adoc
-- [x] contributing_examples.md/.adoc
+- [x] basic_elements.md/.adoc - Headings, lists, tables, admonitions
+- [x] api_docs.md/.adoc - API documentation structure
+- [x] contributing_examples.md/.adoc - How to add/debug/evaluate tests
 - [x] unicode.md/.adoc - Unicode characters, ASCII art diagrams
 - [x] style.md/.adoc - Lists in admonitions, block quotes, footnotes
 - [x] latex.md/.adoc - Math equations (inline and display)
-- [ ] index.md/.adoc
-- [ ] fonts.md/.adoc
-- [ ] linenumbers.md/.adoc
-- [ ] xrefs.md/.adoc
-- [ ] man/tutorial.md/.adoc
-- [ ] lib/functions.md/.adoc
+- [x] index.md/.adoc - Main entry with admonitions, code, symbols
+- [x] fonts.md/.adoc - Font rendering with Unicode
+- [x] linenumbers.md/.adoc - Code blocks with various styles
+- [x] xrefs.md/.adoc - Cross-references and internal links
+- [x] tutorial.md/.adoc - Comprehensive tutorial with all features
+- [x] functions.md/.adoc - Full API documentation style
 
-## Test Results Summary
+## Test Results Summary (All Passing)
 
 | Test Suite | Tests | Status |
 |------------|-------|--------|
@@ -177,5 +177,11 @@ print_comparison_report(result)
 | Unicode | 7 | Pass |
 | Style | 9 | Pass |
 | LaTeX/Math | 7 | Pass |
+| Index | 8 | Pass |
+| Fonts | 4 | Pass |
+| Line Numbers | 4 | Pass |
+| Cross-References | 6 | Pass |
+| Tutorial | 8 | Pass |
+| Functions API | 8 | Pass |
 | Feature Coverage | 8 | Pass |
-| **Total** | **61** | **Pass** |
+| **Total** | **93** | **Pass** |

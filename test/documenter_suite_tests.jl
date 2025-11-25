@@ -319,6 +319,138 @@ end
         end
     end
 
+    @testset "Index (Documenter Example)" begin
+        md_ast, adoc_ast = load_test_pair("index")
+        result = compare_documents(md_ast, adoc_ast; name="index")
+
+        print_comparison_report(result)
+
+        @testset "Structure" begin
+            @test result.md_manifest[:Heading] == result.adoc_manifest[:Heading]
+        end
+
+        @testset "Admonitions" begin
+            @test get(result.md_manifest, :Admonition, 0) >= 3
+            @test get(result.adoc_manifest, :Admonition, 0) >= 3
+        end
+
+        @testset "Lists" begin
+            @test get(result.md_manifest, :List, 0) >= 1
+            @test get(result.adoc_manifest, :List, 0) >= 1
+        end
+
+        @testset "Code Blocks" begin
+            @test get(result.md_manifest, :CodeBlock, 0) >= 1
+            @test get(result.adoc_manifest, :CodeBlock, 0) >= 1
+        end
+    end
+
+    @testset "Fonts (Documenter Example)" begin
+        md_ast, adoc_ast = load_test_pair("fonts")
+        result = compare_documents(md_ast, adoc_ast; name="fonts")
+
+        print_comparison_report(result)
+
+        @testset "Structure" begin
+            @test result.md_manifest[:Heading] == result.adoc_manifest[:Heading]
+        end
+
+        @testset "Code Blocks" begin
+            # Multiple code blocks with Unicode
+            @test get(result.md_manifest, :CodeBlock, 0) >= 4
+            @test get(result.adoc_manifest, :CodeBlock, 0) >= 4
+        end
+    end
+
+    @testset "Line Numbers (Documenter Example)" begin
+        md_ast, adoc_ast = load_test_pair("linenumbers")
+        result = compare_documents(md_ast, adoc_ast; name="linenumbers")
+
+        print_comparison_report(result)
+
+        @testset "Structure" begin
+            @test result.md_manifest[:Heading] == result.adoc_manifest[:Heading]
+        end
+
+        @testset "Code Blocks" begin
+            @test get(result.md_manifest, :CodeBlock, 0) >= 5
+            @test get(result.adoc_manifest, :CodeBlock, 0) >= 5
+        end
+    end
+
+    @testset "Cross-References (Documenter Example)" begin
+        md_ast, adoc_ast = load_test_pair("xrefs")
+        result = compare_documents(md_ast, adoc_ast; name="xrefs")
+
+        print_comparison_report(result)
+
+        @testset "Structure" begin
+            @test result.md_manifest[:Heading] == result.adoc_manifest[:Heading]
+        end
+
+        @testset "Lists" begin
+            @test get(result.md_manifest, :List, 0) >= 1
+            @test get(result.adoc_manifest, :List, 0) >= 1
+        end
+
+        @testset "Code Blocks" begin
+            @test get(result.md_manifest, :CodeBlock, 0) >= 1
+            @test get(result.adoc_manifest, :CodeBlock, 0) >= 1
+        end
+    end
+
+    @testset "Tutorial (Documenter Example)" begin
+        md_ast, adoc_ast = load_test_pair("tutorial")
+        result = compare_documents(md_ast, adoc_ast; name="tutorial")
+
+        print_comparison_report(result)
+
+        @testset "Structure" begin
+            @test result.md_manifest[:Heading] == result.adoc_manifest[:Heading]
+        end
+
+        @testset "Code Blocks" begin
+            @test get(result.md_manifest, :CodeBlock, 0) >= 8
+            @test get(result.adoc_manifest, :CodeBlock, 0) >= 8
+        end
+
+        @testset "Admonitions" begin
+            @test get(result.md_manifest, :Admonition, 0) >= 3
+            @test get(result.adoc_manifest, :Admonition, 0) >= 3
+        end
+
+        @testset "Lists" begin
+            @test get(result.md_manifest, :List, 0) >= 1
+            @test get(result.adoc_manifest, :List, 0) >= 1
+        end
+    end
+
+    @testset "Functions API (Documenter Example)" begin
+        md_ast, adoc_ast = load_test_pair("functions")
+        result = compare_documents(md_ast, adoc_ast; name="functions")
+
+        print_comparison_report(result)
+
+        @testset "Structure" begin
+            @test result.md_manifest[:Heading] == result.adoc_manifest[:Heading]
+        end
+
+        @testset "Code Blocks" begin
+            @test get(result.md_manifest, :CodeBlock, 0) >= 10
+            @test get(result.adoc_manifest, :CodeBlock, 0) >= 10
+        end
+
+        @testset "Lists" begin
+            @test get(result.md_manifest, :List, 0) >= 1
+            @test get(result.adoc_manifest, :List, 0) >= 1
+        end
+
+        @testset "Tables" begin
+            @test get(result.md_manifest, :Table, 0) >= 1
+            @test get(result.adoc_manifest, :Table, 0) >= 1
+        end
+    end
+
 end
 
 # ============================================================================
